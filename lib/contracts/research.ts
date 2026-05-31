@@ -4,27 +4,19 @@
 import type { ResearchArtifact } from '../../types/index';
 
 export interface ResearchQuery {
+  businessId: string; // per-business isolation: where artifacts are stored/persisted
   industry: string;
   state: string;
   queries: string[];
 }
 
 export interface ResearchProvider {
-  // Also persists structured DOM/JSON to storage (keyed under `${businessId}/research/...`).
+  // Also persists structured DOM/JSON to storage (keyed under `${businessId}/research/...`)
+  // and creates a ResearchArtifact per result via getDb().research.create.
   research(input: ResearchQuery): Promise<ResearchArtifact[]>;
 }
 
-// Returns the mock provider when USE_MOCKS==='true' or RTRVR_API_KEY is missing.
-// The real RTRVR-backed provider is wired by T2 in lib/integrations/rtrvr.ts.
-export function getResearch(): ResearchProvider {
-  const useMocks = process.env.USE_MOCKS === 'true' || !process.env.RTRVR_API_KEY;
-  if (useMocks) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockResearch } = require('../mocks/mock-research') as typeof import('../mocks/mock-research');
-    return mockResearch;
-  }
-  // T2: return real RTRVR provider here once integrations land.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { mockResearch } = require('../mocks/mock-research') as typeof import('../mocks/mock-research');
-  return mockResearch;
-}
+// Returns the mock provider when USE_MOCKS==='true' or RTRVR_API_KEY is missing,
+// otherwise the real RTRVR adapter. Selection lives in the integration
+// (lib/integrations/rtrvr.ts); this stays the stable import surface.
+export { getResearch } from '../integrations/rtrvr';

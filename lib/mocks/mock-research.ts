@@ -8,14 +8,13 @@ import { demoResearch } from './fixtures';
 export const mockResearch: ResearchProvider = {
   async research(input: ResearchQuery): Promise<ResearchArtifact[]> {
     // In real life RTRVR scrapes the web and persists structured JSON to storage.
-    // The mock just echoes the fixture artifacts, lightly filtered by query intent.
-    const wantsCompliance = input.queries.some((q) =>
-      /law|compliance|osha|ada|harassment|labor|break|food handler/i.test(q),
-    );
-    const artifacts = demoResearch.filter((a) =>
-      wantsCompliance ? true : a.category !== 'compliance' || true,
-    );
-    return structuredClone(artifacts);
+    // The mock echoes the fixture artifacts, rebound to the requested business id
+    // so downstream generation (which keys everything by businessId) works offline.
+    return demoResearch.map((a) => ({
+      ...a,
+      businessId: input.businessId,
+      structuredKey: `${input.businessId}/research/${a.id}.json`,
+    }));
   },
 };
 

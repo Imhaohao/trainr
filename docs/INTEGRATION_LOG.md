@@ -13,6 +13,15 @@ detail: ...
 - [ ] **Request Insforge credentials from user** — `INSFORGE_API_URL`, `INSFORGE_API_KEY`, `INSFORGE_PROJECT_ID`. Until then T1 ships on `LocalRepository`. (owner: T1)
 
 ## Log
+### [Phase 1] [T2] RTRVR research adapter ready
+status: ready
+detail: `lib/integrations/rtrvr.ts` implements `ResearchProvider` against RTRVR's `POST /scrape` (`https://api.rtrvr.ai/scrape`, `Authorization: Bearer`, returns per-tab `{text, tree, elementLinkRecord}`; `tree` is a stringified accessibility/DOM tree). Flow per query: resolve to an authoritative seed URL + category (parameterized by state for labor/harassment; DuckDuckGo HTML fallback for open queries) → scrape → store structured payload to Tigris `${businessId}/research/<id>.json` → condense a summary via `getLlm()` (cacheable system prompt) → `getDb().research.create`. Targets fire concurrently; a failed scrape is logged and skipped, never sinks the run. Exports `getResearch()`, `rtrvrResearch`, and `buildResearchQueries(industry,state)` (curated set the orchestrator can reuse). Falls back to `mock-research` when `RTRVR_API_KEY` absent or `USE_MOCKS==='true'`.
+contract-touch: `lib/contracts/research.ts#getResearch` (frozen) now re-exports the selector from the integration. `tsc --noEmit` + eslint clean.
+
+### [Phase 1] [T2] CONTRACT CHANGE — added `businessId` to `ResearchQuery`
+status: done
+proposal+rationale: `ResearchProvider.research(input)` must persist artifacts to Tigris under `${businessId}/research/...` and create `ResearchArtifact` rows (which have a required `businessId`), but the frozen `ResearchQuery` carried no business id — making a correct real implementation impossible. Added `businessId: string` as the first field of `ResearchQuery`. This is additive to a type only consumed inside T2 today (no other callers — grep-verified), so blast radius is nil. Orchestrator will pass `businessId` when invoking research. Mock updated to rebind fixture artifacts (id + structuredKey) to the requested business. T1/T3/T4: if you build a `ResearchQuery`, include `businessId`. Shout in this log if this is a problem.
+
 ### [Phase 1] [T2] Tigris storage adapter ready
 status: ready
 detail: `lib/integrations/tigris.ts` implements `StorageAdapter` (AWS SDK v3 → Tigris S3, `forcePathStyle: true`, region `auto`, bucket `TIGRIS_BUCKET`). Exports `getTigrisStorage()` (real singleton), `getStorage()` (mock-vs-real selection), and `tigrisKeys` helpers enforcing the `${businessId}/...` key layout. Falls back to `mock-storage` when AWS creds are absent or `USE_MOCKS==='true'`.
