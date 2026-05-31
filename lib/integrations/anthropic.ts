@@ -1,3 +1,5 @@
+import 'server-only';
+
 // Anthropic (Claude) LLM provider — implements LlmProvider (T2). Used by the
 // curriculum/compliance generators and by T3's coach.
 //

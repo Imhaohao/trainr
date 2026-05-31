@@ -17,19 +17,24 @@ export async function POST(
   const body = await readJson<Partial<IntakeProfile>>(req);
   const db = getDb();
 
+  const existing = await db.intake.get(id);
+
   const next: IntakeProfile = {
     businessId: id,
-    openingClosing: body.openingClosing,
-    cleaning: body.cleaning,
-    machineOperations: body.machineOperations,
-    drinkProduction: body.drinkProduction,
-    recipes: body.recipes ?? [],
-    notes: body.notes,
-    uploadedFileIds: body.uploadedFileIds ?? [],
-    menuImageIds: body.menuImageIds ?? [],
+    openingClosing: body.openingClosing ?? existing?.openingClosing,
+    cleaning: body.cleaning ?? existing?.cleaning,
+    machineOperations:
+      body.machineOperations ?? existing?.machineOperations,
+    drinkProduction: body.drinkProduction ?? existing?.drinkProduction,
+    recipes: body.recipes ?? existing?.recipes ?? [],
+    notes: body.notes ?? existing?.notes,
+    uploadedFileIds: body.uploadedFileIds ?? existing?.uploadedFileIds ?? [],
+    menuImageIds: body.menuImageIds ?? existing?.menuImageIds ?? [],
+    directContext: existing?.directContext,
+    contextSources: existing?.contextSources,
+    googleDocUrls: existing?.googleDocUrls,
   };
 
-  const existing = await db.intake.get(id);
   const intake = existing
     ? await db.intake.update(id, next)
     : await db.intake.create(next);

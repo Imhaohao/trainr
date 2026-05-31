@@ -7,7 +7,11 @@ import { getDb } from '@/lib/contracts/db';
 import { getStorage } from '@/lib/contracts/storage';
 import { ok, fail } from '@/lib/http';
 import { ownedBusinessOr403 } from '@/lib/auth';
-import type { StoredFile, StoredFileKind } from '@/types';
+import {
+  appendContextSource,
+  extractPdfText,
+} from '@/lib/intake/context-extract';
+import type { IntakeProfile, StoredFile, StoredFileKind } from '@/types';
 
 export async function POST(
   req: Request,
@@ -48,7 +52,46 @@ export async function POST(
     kind,
     createdAt: new Date().toISOString(),
   };
-  await getDb().files.create(stored);
+  const db = getDb();
+  await db.files.create(stored);
 
-  return ok({ file: stored });
+  let extractedChars: number | undefined;
+  let preview: string | undefined;
+  const isPdf =
+    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    try {
+      const extractedText = await extractPdfText(bytes);
+      extractedChars = extractedText.length;
+      preview = extractedText.slice(0, 400);
+      const existing = await db.intake.get(businessId);
+      const patch = appendContextSource(
+        existing,
+        {
+          type: 'pdf',
+          label: file.name,
+          fileId: fileId,
+          extractedAt: new Date().toISOString(),
+        },
+        extractedText,
+      );
+      const next: IntakeProfile = {
+        businessId,
+        uploadedFileIds: [
+          ...(existing?.uploadedFileIds ?? []),
+          fileId,
+        ],
+        menuImageIds: existing?.menuImageIds ?? [],
+        ...existing,
+        ...patch,
+      };
+      if (existing) await db.intake.update(businessId, next);
+      else await db.intake.create(next);
+    } catch (err) {
+      console.error('[files] PDF text extraction failed:', err);
+    }
+  }
+
+  return ok({ file: stored, extractedChars, preview });
 }

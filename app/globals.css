@@ -94,8 +94,8 @@
   --color-warning: var(--warning);
   --color-danger: var(--danger);
 
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   --radius-card: var(--radius);
 
@@ -211,6 +211,16 @@ body {
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* `text-muted` uses the muted surface token; secondary copy should use muted-foreground. */
+@layer utilities {
+  .text-muted {
+    color: var(--muted-foreground);
+  }
+  .placeholder\:text-muted::placeholder {
+    color: var(--muted-foreground);
   }
 }
 

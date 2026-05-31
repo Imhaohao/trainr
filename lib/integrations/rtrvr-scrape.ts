@@ -3,6 +3,34 @@
 const DEFAULT_BASE = 'https://api.rtrvr.ai';
 const SCRAPE_TIMEOUT_MS = 120_000;
 const MAX_INLINE_BYTES = 5_000_000;
+const SCRAPE_RETRIES = 3;
+const RETRY_BASE_MS = 500;
+
+type ScrapeTarget = 'auto' | 'cloud' | 'extension';
+
+function scrapeTarget(): ScrapeTarget {
+  const raw = process.env.RTRVR_SCRAPE_TARGET?.trim().toLowerCase();
+  if (raw === 'cloud' || raw === 'extension' || raw === 'auto') return raw;
+  // Default cloud: server-side Trainr calls must not depend on a local Chrome extension.
+  return 'cloud';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableRtrvrError(message: string, status?: number): boolean {
+  if (status && [408, 429, 500, 502, 503, 504].includes(status)) return true;
+  return /native bridge|SCRAPE_ERROR|rate.?limit|timeout|ECONNRESET/i.test(message);
+}
+
+function shortRtrvrError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const bridge = msg.match(/"error":"([^"]+)"/);
+  if (bridge?.[1]) return bridge[1];
+  if (msg.length > 180) return `${msg.slice(0, 177)}…`;
+  return msg;
+}
 
 export type RtrvrScrapedTab = {
   url?: string;
@@ -27,38 +55,65 @@ export function rtrvrEnabled(): boolean {
 /** Scrape a single URL via RTRVR. Returns null on failure (caller decides fallback). */
 export async function rtrvrScrapeUrl(url: string): Promise<RtrvrScrapedTab | null> {
   const base = process.env.RTRVR_BASE_URL || DEFAULT_BASE;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SCRAPE_TIMEOUT_MS);
+  const target = scrapeTarget();
+  let lastErr: unknown;
 
-  try {
-    const res = await fetch(`${base}/scrape`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.RTRVR_API_KEY ?? ''}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        urls: [url],
-        settings: { extractionConfig: { onlyTextContent: false } },
-        response: { inlineOutputMaxBytes: MAX_INLINE_BYTES },
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`RTRVR /scrape ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as ScrapeResponse;
-    if (data.status === 'error') throw new Error(`RTRVR error: ${data.error}`);
-    let tab = data.tabs?.[0];
-    if (!tab && data.metadata?.responseRef) {
-      tab = { url, text: '' };
+  for (let attempt = 1; attempt <= SCRAPE_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SCRAPE_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(`${base}/scrape`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.RTRVR_API_KEY ?? ''}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          urls: [url],
+          target,
+          settings: { extractionConfig: { onlyTextContent: false } },
+          response: { inlineOutputMaxBytes: MAX_INLINE_BYTES },
+        }),
+        signal: controller.signal,
+      });
+      const bodyText = await res.text();
+      if (!res.ok) {
+        throw Object.assign(new Error(`RTRVR /scrape ${res.status}: ${bodyText}`), {
+          status: res.status,
+        });
+      }
+      const data = JSON.parse(bodyText) as ScrapeResponse & { success?: boolean; error?: string };
+      if (data.success === false || data.status === 'error') {
+        throw new Error(`RTRVR error: ${data.error ?? 'unknown'}`);
+      }
+      let tab = data.tabs?.[0];
+      if (!tab && data.metadata?.responseRef) {
+        tab = { url, text: '' };
+      }
+      if (!tab) throw new Error(`RTRVR returned no tab for ${url}`);
+      return tab;
+    } catch (err) {
+      lastErr = err;
+      const status = (err as { status?: number }).status;
+      const message = shortRtrvrError(err);
+      const retry = attempt < SCRAPE_RETRIES && isRetryableRtrvrError(message, status);
+      if (retry) {
+        console.warn(
+          `[rtrvr] scrape attempt ${attempt}/${SCRAPE_RETRIES} failed for ${url} (${message}); retrying…`,
+        );
+        await sleep(RETRY_BASE_MS * 2 ** (attempt - 1));
+        continue;
+      }
+      console.warn(`[rtrvr] scrape failed for ${url} (target=${target}): ${message}`);
+      return null;
+    } finally {
+      clearTimeout(timer);
     }
-    if (!tab) throw new Error(`RTRVR returned no tab for ${url}`);
-    return tab;
-  } catch (err) {
-    console.error(`[rtrvr] scrape failed for ${url}:`, err);
-    return null;
-  } finally {
-    clearTimeout(timer);
   }
+
+  console.warn(`[rtrvr] scrape failed for ${url}: ${shortRtrvrError(lastErr)}`);
+  return null;
 }
 
 /** Pick the first image URL from RTRVR link map (product previews). */

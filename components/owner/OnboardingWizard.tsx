@@ -18,6 +18,13 @@ import {
   Textarea,
   cn,
 } from '@/components/ui';
+import { DirectContextImport } from '@/components/owner/DirectContextImport';
+import {
+  toBusinessRoles,
+  type ExtractedIntake,
+} from '@/lib/intake/extract-types';
+import { INDUSTRIES } from '@/lib/intake/industries';
+import { computeMissingIntakeFields } from '@/lib/intake/missing-fields';
 import type {
   Business,
   BusinessRole,
@@ -28,23 +35,19 @@ import type {
 } from '@/types';
 
 const STEPS = [
+  [
+    'Import business info',
+    'Upload a PDF or paste a Google Doc with your handbook, SOPs, and recipes.',
+  ],
   ['Business basics', 'Name, industry, address, size, languages, mission.'],
   ['Roles', 'Add roles and mark which are customer-facing.'],
   ['Operations', 'Opening/closing, cleaning, machines, drink production.'],
   ['Recipes', 'Name, ingredients, steps — or upload instead.'],
-  ['Uploads', 'Drag in docs and menu images.'],
+  ['More uploads', 'Extra docs and menu images (optional).'],
   ['Review & Generate', 'Kick off the training pipeline.'],
 ] as const;
 
-const INDUSTRIES = [
-  'Food & Beverage (Bubble Tea / Cafe)',
-  'Restaurant / QSR',
-  'Retail',
-  'Salon / Personal Care',
-  'Grocery / Convenience',
-  'Hospitality',
-  'Other',
-];
+const IMPORT_STEP = 0;
 
 const LANGUAGES: { code: LanguageCode; label: string }[] = [
   { code: 'en', label: 'English' },
@@ -114,7 +117,10 @@ export default function OnboardingWizard({
   initialFiles: StoredFile[];
 }) {
   const router = useRouter();
-  const [step, setStep] = React.useState(0);
+  const hasImportedContext = Boolean(
+    initialIntake?.directContext && initialIntake.directContext.length > 80,
+  );
+  const [step, setStep] = React.useState(hasImportedContext ? 1 : 0);
   const [businessId, setBusinessId] = React.useState<string | null>(
     initialBusiness?.id ?? null,
   );
@@ -149,6 +155,27 @@ export default function OnboardingWizard({
     initialIntake?.recipes ?? [],
   );
   const [files, setFiles] = React.useState<StoredFile[]>(initialFiles);
+  const [contextReady, setContextReady] = React.useState(hasImportedContext);
+  const [prefilledFromDoc, setPrefilledFromDoc] = React.useState(false);
+  const [extracting, setExtracting] = React.useState(false);
+
+  const missingFields = React.useMemo(
+    () =>
+      computeMissingIntakeFields({
+        name: basics.name,
+        address: basics.address,
+        employeeCount: basics.employeeCount,
+        mission: basics.mission,
+        demographics: basics.demographics,
+        rolesCount: roles.filter((r) => r.title.trim()).length,
+        openingClosing: ops.openingClosing,
+        cleaning: ops.cleaning,
+        machineOperations: ops.machineOperations,
+        drinkProduction: ops.drinkProduction,
+        recipesCount: recipes.filter((r) => r.name.trim()).length,
+      }),
+    [basics, roles, ops, recipes],
+  );
 
   const dirty = React.useRef(false);
   const markDirty = () => {
@@ -248,10 +275,113 @@ export default function OnboardingWizard({
     }
   }
 
+  function applyExtracted(data: ExtractedIntake) {
+    if (data.name?.trim()) setBasics((b) => ({ ...b, name: data.name!.trim() }));
+    if (
+      data.industry?.trim() &&
+      (INDUSTRIES as readonly string[]).includes(data.industry)
+    ) {
+      setBasics((b) => ({ ...b, industry: data.industry! }));
+    }
+    if (data.address?.trim()) {
+      setBasics((b) => ({ ...b, address: data.address!.trim() }));
+    }
+    if (data.state?.trim()) {
+      setBasics((b) => ({ ...b, state: data.state!.trim().toUpperCase().slice(0, 2) }));
+    }
+    if (data.employeeCount && data.employeeCount > 0) {
+      setBasics((b) => ({ ...b, employeeCount: data.employeeCount! }));
+    }
+    if (data.demographics?.trim()) {
+      setBasics((b) => ({ ...b, demographics: data.demographics!.trim() }));
+    }
+    if (data.mission?.trim()) {
+      setBasics((b) => ({ ...b, mission: data.mission!.trim() }));
+    }
+    if (data.languages?.length) {
+      const langs = data.languages as LanguageCode[];
+      setBasics((b) => ({ ...b, languages: langs.length ? langs : b.languages }));
+    }
+    if (data.roles?.length) {
+      setRoles(toBusinessRoles(data.roles));
+    }
+    if (data.openingClosing?.trim()) {
+      setOps((o) => ({ ...o, openingClosing: data.openingClosing!.trim() }));
+    }
+    if (data.cleaning?.trim()) {
+      setOps((o) => ({ ...o, cleaning: data.cleaning!.trim() }));
+    }
+    if (data.machineOperations?.trim()) {
+      setOps((o) => ({
+        ...o,
+        machineOperations: data.machineOperations!.trim(),
+      }));
+    }
+    if (data.drinkProduction?.trim()) {
+      setOps((o) => ({
+        ...o,
+        drinkProduction: data.drinkProduction!.trim(),
+      }));
+    }
+    if (data.notes?.trim()) {
+      setOps((o) => ({ ...o, notes: data.notes!.trim() }));
+    }
+    if (data.recipes?.length) {
+      setRecipes(
+        data.recipes.map((r) => ({
+          name: r.name.trim(),
+          ingredients: r.ingredients ?? [],
+          steps: r.steps ?? [],
+        })),
+      );
+    }
+    markDirty();
+    setPrefilledFromDoc(true);
+  }
+
+  async function runExtractAndAdvance() {
+    setExtracting(true);
+    setError(null);
+    try {
+      const id = await ensureBusiness();
+      await saveAll();
+      const res = await fetch(`/api/business/${id}/intake/extract`, {
+        method: 'POST',
+      });
+      const json = await res.json();
+      if (!json.ok) {
+        throw new Error(json.error || 'Could not read your document');
+      }
+      applyExtracted(json.data.extracted as ExtractedIntake);
+      setStep(1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Extraction failed');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
   async function next() {
+    if (step === IMPORT_STEP) {
+      if (!contextReady) {
+        setError(
+          'Upload a PDF or import a Google Doc, or choose “Fill out manually instead”.',
+        );
+        return;
+      }
+      await runExtractAndAdvance();
+      return;
+    }
     await saveAll();
     setStep((s) => Math.min(STEPS.length - 1, s + 1));
   }
+
+  function skipToManual() {
+    setError(null);
+    setContextReady(true);
+    setStep(1);
+  }
+
   function back() {
     setStep((s) => Math.max(0, s - 1));
   }
@@ -276,8 +406,8 @@ export default function OnboardingWizard({
         <div>
           <h1 className="text-2xl font-bold">Set up your training program</h1>
           <p className="text-muted">
-            Dump everything you know — Trainr does the structuring. Every step
-            autosaves.
+            Start with your handbook or SOP doc when you have one — we pre-fill
+            what we can, then you complete the rest. Every step autosaves.
           </p>
         </div>
         <SaveIndicator state={saveState} />
@@ -337,7 +467,20 @@ export default function OnboardingWizard({
             <CardDescription>{STEPS[step][1]}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {step === 0 && (
+            {step === IMPORT_STEP && (
+              <ImportStep
+                businessId={businessId}
+                onEnsureBusiness={ensureBusiness}
+                onContextReady={() => setContextReady(true)}
+              />
+            )}
+            {step > IMPORT_STEP && step < STEPS.length - 1 && (
+              <MissingFieldsBanner
+                missing={missingFields}
+                prefilledFromDoc={prefilledFromDoc}
+              />
+            )}
+            {step === 1 && (
               <BasicsStep
                 basics={basics}
                 onChange={(patch) => {
@@ -346,7 +489,7 @@ export default function OnboardingWizard({
                 }}
               />
             )}
-            {step === 1 && (
+            {step === 2 && (
               <RolesStep
                 roles={roles}
                 onChange={(next) => {
@@ -355,7 +498,7 @@ export default function OnboardingWizard({
                 }}
               />
             )}
-            {step === 2 && (
+            {step === 3 && (
               <OpsStep
                 ops={ops}
                 onChange={(patch) => {
@@ -364,7 +507,7 @@ export default function OnboardingWizard({
                 }}
               />
             )}
-            {step === 3 && (
+            {step === 4 && (
               <RecipesStep
                 recipes={recipes}
                 onChange={(next) => {
@@ -373,10 +516,10 @@ export default function OnboardingWizard({
                 }}
               />
             )}
-            {step === 4 && (
+            {step === 5 && (
               <UploadsStep files={files} onUpload={onUpload} />
             )}
-            {step === 5 && (
+            {step === 6 && (
               <ReviewStep
                 basics={basics}
                 roles={roles}
@@ -391,11 +534,26 @@ export default function OnboardingWizard({
       </div>
 
       {/* Footer nav */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Button variant="ghost" onClick={back} disabled={step === 0}>
           Back
         </Button>
-        {step < STEPS.length - 1 ? (
+        {step === IMPORT_STEP ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" onClick={skipToManual}>
+              Fill out manually instead
+            </Button>
+            <Button onClick={next} disabled={extracting || !contextReady}>
+              {extracting ? (
+                <>
+                  <Spinner size={16} /> Reading document…
+                </>
+              ) : (
+                'Continue with document'
+              )}
+            </Button>
+          </div>
+        ) : step < STEPS.length - 1 ? (
           <Button onClick={next}>Save & continue</Button>
         ) : (
           <Button onClick={onGenerate} disabled={generating}>
@@ -410,6 +568,79 @@ export default function OnboardingWizard({
         )}
       </div>
     </div>
+  );
+}
+
+function MissingFieldsBanner({
+  missing,
+  prefilledFromDoc,
+}: {
+  missing: string[];
+  prefilledFromDoc: boolean;
+}) {
+  if (!missing.length && !prefilledFromDoc) return null;
+  return (
+    <div className="rounded-[var(--radius)] border border-brand/40 bg-brand-soft px-4 py-3 text-sm">
+      {prefilledFromDoc && (
+        <p className="font-medium text-brand-foreground">
+          We pre-filled fields from your document. Complete anything still
+          missing below.
+        </p>
+      )}
+      {missing.length > 0 && (
+        <p className={prefilledFromDoc ? 'mt-2 text-muted' : 'text-muted'}>
+          Still needed: {missing.join(' · ')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ImportStep({
+  businessId,
+  onEnsureBusiness,
+  onContextReady,
+}: {
+  businessId: string | null;
+  onEnsureBusiness: () => Promise<string>;
+  onContextReady: () => void;
+}) {
+  const [readyId, setReadyId] = React.useState<string | null>(businessId);
+  const [booting, setBooting] = React.useState(!businessId);
+
+  React.useEffect(() => {
+    if (businessId) {
+      setReadyId(businessId);
+      setBooting(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const id = await onEnsureBusiness();
+        if (!cancelled) setReadyId(id);
+      } finally {
+        if (!cancelled) setBooting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [businessId, onEnsureBusiness]);
+
+  if (booting || !readyId) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted">
+        <Spinner size={16} /> Preparing upload…
+      </p>
+    );
+  }
+
+  return (
+    <DirectContextImport
+      businessId={readyId}
+      onImported={() => onContextReady()}
+    />
   );
 }
 
