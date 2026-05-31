@@ -31,6 +31,7 @@ export type BusinessStatus =
   | 'draft'
   | 'researching'
   | 'generating'
+  | 'failed'
   | 'ready'
   | 'published';
 

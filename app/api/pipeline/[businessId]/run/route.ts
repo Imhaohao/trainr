@@ -6,7 +6,11 @@
 // the next run rather than restarting.
 
 import { nanoid } from 'nanoid';
-import { runPipeline } from '@/lib/agents/orchestrator';
+import {
+  getRunStatus,
+  isPipelineActive,
+  runPipeline,
+} from '@/lib/agents/orchestrator';
 import { ok, fail } from '@/lib/http';
 import { ownedBusinessOr403 } from '@/lib/auth';
 
@@ -22,6 +26,14 @@ export async function POST(
   const owned = await ownedBusinessOr403(businessId);
   if (!owned) return fail('Forbidden.', 403);
 
+  const prior = await getRunStatus(businessId);
+  if (prior && isPipelineActive(prior.stage)) {
+    return ok({
+      runId: prior.runId,
+      alreadyRunning: true as const,
+    });
+  }
+
   const runId = `run_${nanoid(10)}`;
 
   // Fire-and-forget: the orchestrator writes run-status as it progresses, which
@@ -30,5 +42,5 @@ export async function POST(
     console.error(`[pipeline] run ${runId} failed to start:`, err);
   });
 
-  return ok({ runId });
+  return ok({ runId, alreadyRunning: false as const });
 }

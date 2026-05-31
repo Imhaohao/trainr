@@ -33,23 +33,40 @@ type PipelineStatus = {
   error?: string;
 };
 
+function isTerminalStage(data: PipelineStatus): boolean {
+  return (
+    data.stage === 'ready' ||
+    data.stage === 'error' ||
+    data.stage === 'idle' ||
+    data.pct >= 100
+  );
+}
+
 export function DashboardPipelineStatus({ businessId }: { businessId: string }) {
   const [status, setStatus] = React.useState<PipelineStatus | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | undefined;
 
     async function poll() {
       const res = await fetch(`/api/pipeline/${businessId}/status`);
       const json = await res.json();
-      if (!cancelled && json.ok) setStatus(json.data);
+      if (cancelled || !json.ok) return;
+      const data = json.data as PipelineStatus;
+      setStatus(data);
+      if (isTerminalStage(data) && intervalId) {
+        clearInterval(intervalId);
+        intervalId = undefined;
+      }
     }
 
     void poll();
-    const id = setInterval(poll, 4000);
+    intervalId = setInterval(() => void poll(), 4000);
+
     return () => {
       cancelled = true;
-      clearInterval(id);
+      if (intervalId) clearInterval(intervalId);
     };
   }, [businessId]);
 

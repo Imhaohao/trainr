@@ -115,6 +115,17 @@ export async function getRunStatus(
   return readJson<RunStatus>(RUN_STATUS_KEY(businessId));
 }
 
+const PIPELINE_TERMINAL_STAGES = new Set<PipelineStage>([
+  'idle',
+  'ready',
+  'error',
+]);
+
+/** True while a run-status checkpoint exists and the job has not finished. */
+export function isPipelineActive(stage: PipelineStage): boolean {
+  return !PIPELINE_TERMINAL_STAGES.has(stage);
+}
+
 async function setRunStatus(status: RunStatus): Promise<void> {
   await writeJson(RUN_STATUS_KEY(status.businessId), status);
 }
@@ -269,6 +280,7 @@ export async function runPipeline(
     console.error(`[orchestrator] pipeline failed (resumable):`, message);
     // Leave the checkpoint intact so the next run resumes from the last stage.
     await setRunStatus(status('error', { programId, error: message }));
+    await db.businesses.update(businessId, { status: 'failed' });
     return { runId, version, programId, status: 'error', error: message };
   }
 }

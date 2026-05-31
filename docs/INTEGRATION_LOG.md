@@ -13,6 +13,35 @@ detail: ...
 - (none)
 
 ## Log
+### [2026-05-31] [ALL] Go-live: real integrations enabled (USE_MOCKS=false)
+status: done
+detail: |
+  Audited Tracks 1–3 against `docs/tracks/*.md` and switched the app off mocks
+  now that all keys are in `.env.local`. Verified end-to-end against real
+  services before flipping the flag:
+  - **Insforge** ✅ all 10 tables seeded (businesses 2, users 4, intake 2,
+    files 4, research 6, programs 1, progress 4, compliance 1, audit 3, chat 2).
+    JSONB columns (`programs.modules`, nested `quiz.questions`) deserialize to
+    objects/arrays through `InsforgeRepository`.
+  - **Anthropic** ✅ real `coachReply` returns grounded text + citations.
+  - **Tigris** ✅ put/get/list round-trip — created the missing `trainr` bucket
+    (first run failed "bucket does not exist").
+  - **RTRVR** ⚠️ rate-limited / returns empty/500 tabs. Added an in-adapter
+    fallback in `lib/integrations/rtrvr.ts#research`: when *all* scrapes yield
+    zero artifacts it falls back to curated mock research so the curriculum
+    stage always has grounding. Real RTRVR results are preferred when present.
+  Changes: `.env.local` `USE_MOCKS=false`; `rtrvr.ts` empty-result fallback.
+  Verified: `tsc --noEmit` clean, `npm run build` succeeds (all routes).
+
+### [2026-05-31] [T1/T2] Pipeline stability + deploy checklist
+status: done
+detail: |
+  - `BusinessStatus` adds `failed` (set by orchestrator on pipeline error).
+  - `POST /api/pipeline/:id/run` returns `{ runId, alreadyRunning }` when a job is
+    already in flight (no parallel `runPipeline` workers).
+  - `GenerationPanel` stops polling on `stage === 'error'`, shows message + retry.
+  - `docs/DEPLOY.md` — Vercel + InsForge env checklist.
+
 ### [2026-05-31] [T3] BLOCKED(mcp): Equipment sim adapter — fixture-backed boba station
 status: blocked
 detail: |

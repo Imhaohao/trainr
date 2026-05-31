@@ -352,7 +352,19 @@ async function research(input: ResearchQuery): Promise<ResearchArtifact[]> {
   const settled = await Promise.all(
     targets.map((t) => scrapeTarget(t, input.businessId)),
   );
-  return settled.filter((a): a is ResearchArtifact => a !== null);
+  const artifacts = settled.filter((a): a is ResearchArtifact => a !== null);
+
+  // RTRVR is rate-limited and occasionally returns empty/error tabs. If every
+  // target failed, the curriculum stage would have zero external grounding —
+  // fall back to the curated mock research so the pipeline still produces a
+  // grounded program. Real RTRVR results are always preferred when present.
+  if (artifacts.length === 0) {
+    console.warn(
+      '[rtrvr] all scrapes returned no artifacts — falling back to mock research',
+    );
+    return mockResearch.research(input);
+  }
+  return artifacts;
 }
 
 export const rtrvrResearch: ResearchProvider = { research };

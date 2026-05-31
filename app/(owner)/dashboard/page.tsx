@@ -54,7 +54,15 @@ export default async function DashboardPage() {
             employees
           </p>
         </div>
-        <Badge tone={business.status === 'published' ? 'success' : 'brand'}>
+        <Badge
+          tone={
+            business.status === 'published'
+              ? 'success'
+              : business.status === 'failed'
+                ? 'danger'
+                : 'brand'
+          }
+        >
           {business.status}
         </Badge>
       </div>

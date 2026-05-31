@@ -18,14 +18,24 @@ interface StatusResponse {
   stage: string;
   pct: number;
   programId?: string;
+  error?: string;
 }
 
 const STAGE_LABELS: Record<string, string> = {
+  research: 'Researching industry standards & compliance…',
+  curriculum: 'Generating modules, quizzes & schedule…',
+  compliance: 'Applying compliance requirements…',
+  assemble: 'Assembling your training program…',
+  persist: 'Saving program…',
+  ready: 'Ready',
+  error: 'Generation failed',
   researching: 'Researching industry standards & compliance…',
   generating: 'Generating modules, quizzes & schedule…',
-  compliance: 'Applying compliance requirements…',
-  ready: 'Ready',
 };
+
+function isInFlightBusinessStatus(status: BusinessStatus): boolean {
+  return status === 'researching' || status === 'generating';
+}
 
 // Shown when the business has no program yet. Triggers the pipeline and polls
 // /status until a program exists, then refreshes the page to render it.
@@ -37,8 +47,7 @@ export function GenerationPanel({
   initialStatus: BusinessStatus;
 }) {
   const router = useRouter();
-  const inProgress =
-    initialStatus === 'researching' || initialStatus === 'generating';
+  const inProgress = isInFlightBusinessStatus(initialStatus);
   const [running, setRunning] = React.useState(inProgress);
   const [stage, setStage] = React.useState<string>(
     inProgress ? initialStatus : 'idle',
@@ -46,20 +55,32 @@ export function GenerationPanel({
   const [pct, setPct] = React.useState(0);
   const [error, setError] = React.useState<string | null>(null);
 
+  const applyStatus = React.useCallback(
+    (data: StatusResponse) => {
+      setStage(data.stage);
+      setPct(data.pct);
+      if (data.stage === 'error') {
+        setRunning(false);
+        setError(data.error ?? 'Generation failed. You can try again.');
+        return;
+      }
+      if (data.stage === 'ready' && data.programId) {
+        setRunning(false);
+        setError(null);
+        router.refresh();
+      }
+    },
+    [router],
+  );
+
   const poll = React.useCallback(async () => {
     const res = await fetch(`/api/pipeline/${businessId}/status`, {
       cache: 'no-store',
     });
     const json = await res.json();
     if (!json.ok) return;
-    const data = json.data as StatusResponse;
-    setStage(data.stage);
-    setPct(data.pct);
-    if (data.stage === 'ready' && data.programId) {
-      setRunning(false);
-      router.refresh();
-    }
-  }, [businessId, router]);
+    applyStatus(json.data as StatusResponse);
+  }, [businessId, applyStatus]);
 
   React.useEffect(() => {
     if (!running) return;
@@ -68,10 +89,16 @@ export function GenerationPanel({
     return () => clearInterval(t);
   }, [running, poll]);
 
+  // Surface the last pipeline error after a failed run (business.status === failed).
+  React.useEffect(() => {
+    if (initialStatus !== 'failed') return;
+    void poll();
+  }, [initialStatus, poll]);
+
   async function start() {
     setError(null);
     setRunning(true);
-    setStage('researching');
+    setStage('research');
     setPct(0);
     try {
       const res = await fetch(`/api/pipeline/${businessId}/run`, {
@@ -79,6 +106,7 @@ export function GenerationPanel({
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || 'Could not start');
+      void poll();
     } catch (e) {
       setRunning(false);
       setError(e instanceof Error ? e.message : 'Could not start generation');
@@ -105,7 +133,9 @@ export function GenerationPanel({
             <Progress value={pct} />
           </>
         ) : (
-          <Button onClick={start}>Generate training program</Button>
+          <Button onClick={start}>
+            {initialStatus === 'failed' ? 'Retry generation' : 'Generate training program'}
+          </Button>
         )}
         {error && <p className="text-sm text-danger">{error}</p>}
       </CardContent>
