@@ -8,6 +8,8 @@
 //   `${businessId}/pdf/...`
 //   `${businessId}/i18n/<lang>/...`
 
+import { mockStorage } from '../mocks/mock-storage';
+
 export interface StorageAdapter {
   putObject(
     key: string,
@@ -26,13 +28,7 @@ export function getStorage(): StorageAdapter {
     process.env.USE_MOCKS === 'true' ||
     !process.env.AWS_ACCESS_KEY_ID ||
     !process.env.AWS_ENDPOINT_URL_S3;
-  if (useMocks) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { mockStorage } = require('@/lib/mocks/mock-storage') as typeof import('@/lib/mocks/mock-storage');
-    return mockStorage;
-  }
+  if (useMocks) return mockStorage;
   // T2: return real Tigris adapter here once integrations land.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { mockStorage } = require('@/lib/mocks/mock-storage') as typeof import('@/lib/mocks/mock-storage');
   return mockStorage;
 }

@@ -18,7 +18,7 @@ import type {
   ComplianceSnapshot,
   AuditEvent,
   ChatMessage,
-} from '@/types';
+} from '../../types/index';
 
 const NOW = '2026-05-31T17:00:00.000Z';
 

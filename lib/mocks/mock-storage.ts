@@ -1,7 +1,7 @@
 // In-memory StorageAdapter — stands in for Tigris (S3) during dev.
 // getSignedUrl returns a data: URL so the browser can actually render it.
 
-import type { StorageAdapter } from '@/lib/contracts/storage';
+import type { StorageAdapter } from '../contracts/storage';
 
 interface StoredBlob {
   body: Buffer;

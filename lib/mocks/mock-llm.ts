@@ -1,7 +1,7 @@
 // Mock LlmProvider — deterministic, offline. Returns plausible markdown so the
 // curriculum/compliance UI and the coach chat render without any API key.
 
-import type { GenerateOpts, LlmProvider } from '@/lib/contracts/llm';
+import type { GenerateOpts, LlmProvider } from '../contracts/llm';
 
 function deterministicReply(opts: GenerateOpts): string {
   const last = [...opts.messages].reverse().find((m) => m.role === 'user');

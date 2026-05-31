@@ -2,7 +2,7 @@
 // Seeded with the Happy Lemon fixture. A module-level singleton so every
 // getDb() call in a process shares the same data (mutations persist within a run).
 
-import type { CrudRepo, DbRepository } from '@/lib/contracts/db';
+import type { CrudRepo, DbRepository } from '../contracts/db';
 import type {
   Business,
   User,
@@ -14,7 +14,7 @@ import type {
   ComplianceSnapshot,
   AuditEvent,
   ChatMessage,
-} from '@/types';
+} from '../../types/index';
 import { demoFixture } from './fixtures';
 
 // IntakeProfile is keyed by businessId (no `id`), so its repo uses businessId as id.

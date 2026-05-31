@@ -2,7 +2,7 @@
 // { ok:false,error } per PLAN §5.
 
 import { NextResponse } from 'next/server';
-import type { ApiResponse } from '@/types';
+import type { ApiResponse } from '../types/index';
 
 export function ok<T>(data: T, init?: ResponseInit): NextResponse<ApiResponse<T>> {
   return NextResponse.json({ ok: true, data }, init);

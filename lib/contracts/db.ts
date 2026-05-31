@@ -12,7 +12,8 @@ import type {
   ComplianceSnapshot,
   AuditEvent,
   ChatMessage,
-} from '@/types';
+} from '../../types/index';
+import { getMockDb } from '../mocks/mock-db';
 
 export interface CrudRepo<T> {
   get(id: string): Promise<T | null>;
@@ -44,13 +45,7 @@ export interface DbRepository {
 export function getDb(): DbRepository {
   const useMocks =
     process.env.USE_MOCKS === 'true' || !process.env.INSFORGE_API_KEY;
-  if (useMocks) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { getMockDb } = require('@/lib/mocks/mock-db') as typeof import('@/lib/mocks/mock-db');
-    return getMockDb();
-  }
-  // T1 Phase 1: return new InsforgeRepository() here.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { getMockDb } = require('@/lib/mocks/mock-db') as typeof import('@/lib/mocks/mock-db');
+  if (useMocks) return getMockDb();
+  // T1 Phase 1: return new InsforgeRepository() here once Insforge creds land.
   return getMockDb();
 }

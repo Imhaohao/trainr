@@ -1,8 +1,8 @@
 // Mock ResearchProvider — returns the realistic boba / food-safety / CA-labor
 // artifacts from the fixture, rebound to the requested business id.
 
-import type { ResearchProvider, ResearchQuery } from '@/lib/contracts/research';
-import type { ResearchArtifact } from '@/types';
+import type { ResearchProvider, ResearchQuery } from '../contracts/research';
+import type { ResearchArtifact } from '../../types/index';
 import { demoResearch } from './fixtures';
 
 export const mockResearch: ResearchProvider = {
