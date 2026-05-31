@@ -223,7 +223,14 @@ async function mergeCatalogWithLlm(
     if (!Array.isArray(parsed.machines) || parsed.machines.length === 0) {
       return dedupeMachines(baseline);
     }
-    return dedupeMachines(parsed.machines);
+    // LLM prompt doesn't include previewImageUrl, so the field is always dropped
+    // after merge. Restore it from the baseline by matching on stable machine id.
+    const baselineById = new Map(baseline.map((m) => [m.id, m]));
+    const restored = parsed.machines.map((m) => ({
+      ...m,
+      previewImageUrl: m.previewImageUrl ?? baselineById.get(m.id)?.previewImageUrl,
+    }));
+    return dedupeMachines(restored);
   } catch (err) {
     console.error('[equipment-rtrvr] LLM merge failed:', err);
     return dedupeMachines(baseline);

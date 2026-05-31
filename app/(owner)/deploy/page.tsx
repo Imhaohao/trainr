@@ -1,21 +1,30 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui';
+import Link from 'next/link';
+import { requireOwnerPage } from '@/lib/auth';
+import { EmployeeHandoffCard } from '@/components/owner/EmployeeHandoffCard';
 
-// Nav shell only — Track 4 replaces this page with the publish pipeline UI.
-export default function DeployPlaceholderPage() {
+// Deploy & publish: after the publish pipeline runs, the owner lands here and
+// gets the employee sign-in handoff (URL + join code).
+export default async function DeployPage() {
+  const { business } = await requireOwnerPage();
+
+  if (!business) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold">Deploy &amp; publish</h1>
+        <p className="text-muted">
+          You haven&apos;t set up a business yet.{' '}
+          <Link href="/onboarding" className="text-accent underline">
+            Start the intake
+          </Link>
+          .
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Deploy &amp; publish</CardTitle>
-        <CardDescription>Coming soon — Track 4</CardDescription>
-      </CardHeader>
-      <CardContent className="text-sm text-muted">
-        This page will run validate → PDF → version bump → audit trail. Use the
-        API stub{' '}
-        <code className="rounded bg-brand-soft px-1">
-          POST /api/deploy/:businessId/publish
-        </code>{' '}
-        until then.
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      <EmployeeHandoffCard joinCode={business.joinCode} />
+    </div>
   );
 }

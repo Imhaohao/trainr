@@ -9,7 +9,7 @@ type ModuleEquipmentShowcaseProps = {
   models: ModuleMediaModel[];
 };
 
-function hasViewableGlb(url: string | undefined): boolean {
+function hasGlb(url: string | undefined): boolean {
   if (!url) return false;
   return /\.glb(\?|$)/i.test(url) || url.startsWith("data:model/gltf");
 }
@@ -18,22 +18,33 @@ export function ModuleEquipmentShowcase({ models }: ModuleEquipmentShowcaseProps
   const [selectedId, setSelectedId] = React.useState(models[0]?.id ?? "");
   const selected =
     models.find((m) => m.id === selectedId) ?? models[0] ?? null;
-  const showViewer = selected && hasViewableGlb(selected.glbUrl);
 
   if (!selected) return null;
+
+  const glbReady = hasGlb(selected.glbUrl);
+
+  // model-viewer attrs we always want
+  const viewerProps: Record<string, unknown> = {
+    alt: selected.name,
+    "camera-controls": true,
+    "auto-rotate": true,
+    "shadow-intensity": "0.6",
+    style: { width: "100%", height: "280px", background: "transparent" },
+  };
+  if (glbReady) viewerProps.src = selected.glbUrl;
+  if (selected.previewUrl) viewerProps.poster = selected.previewUrl;
 
   return (
     <section
       aria-label="3D equipment"
       className="rounded-[var(--radius)] border border-border bg-brand-soft/40 p-4"
     >
-      {showViewer ? (
-        <Script
-          src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
-          type="module"
-          strategy="lazyOnload"
-        />
-      ) : null}
+      {/* Always load model-viewer — it shows the poster even without a GLB */}
+      <Script
+        src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"
+        type="module"
+        strategy="lazyOnload"
+      />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">
@@ -45,6 +56,7 @@ export function ModuleEquipmentShowcase({ models }: ModuleEquipmentShowcaseProps
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        {/* ── Machine list ── */}
         <div className="flex flex-wrap gap-2">
           {models.map((model) => {
             const active = model.id === selected.id;
@@ -89,53 +101,26 @@ export function ModuleEquipmentShowcase({ models }: ModuleEquipmentShowcaseProps
           })}
         </div>
 
-        <div className="min-h-[220px] overflow-hidden rounded-[var(--radius)] border border-border bg-card">
-          {showViewer && selected.glbUrl ? (
-            React.createElement("model-viewer", {
-              src: selected.glbUrl,
-              alt: selected.name,
-              "camera-controls": true,
-              "auto-rotate": true,
-              "shadow-intensity": "0.6",
-              style: {
-                width: "100%",
-                height: "220px",
-                background: "transparent",
-              },
-            })
-          ) : selected.previewUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={selected.previewUrl}
-              alt={selected.name}
-              className="h-full min-h-[220px] w-full object-contain p-4"
-            />
-          ) : (
-            <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-              <span className="text-3xl" aria-hidden>
-                📦
-              </span>
-              <p>3D preview from supplier listing</p>
-            </div>
-          )}
+        {/* ── 3D viewer panel ── */}
+        <div className="flex flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-card">
+          {React.createElement("model-viewer", viewerProps)}
+
+          {/* fallback link inside the panel */}
+          {selected.productUrl ? (
+            <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              {glbReady ? "Model loaded from storage. " : "3D model not loaded? "}
+              <a
+                href={selected.productUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-foreground underline underline-offset-2"
+              >
+                {glbReady ? "View on supplier site" : "Click this link to view on supplier site"}
+              </a>
+            </p>
+          ) : null}
         </div>
       </div>
-
-      {selected.productUrl ? (
-        <p className="mt-3 text-xs text-muted-foreground">
-          <a
-            href={selected.productUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-medium text-foreground underline underline-offset-2"
-          >
-            View source model
-          </a>
-          {!showViewer
-            ? " — export a GLB to your storage bucket to rotate it here."
-            : null}
-        </p>
-      ) : null}
     </section>
   );
 }

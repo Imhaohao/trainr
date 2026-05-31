@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -270,12 +271,14 @@ export function TrainrNavbar({
               href={logoHref}
               className="flex shrink-0 items-center gap-2 font-semibold tracking-tight text-foreground transition-opacity hover:opacity-90"
             >
-              <span
-                aria-hidden
-                className="flex size-7 items-center justify-center rounded-lg bg-brand text-sm text-brand-foreground"
-              >
-                🍋
-              </span>
+              <Image
+                src="/logo.png"
+                alt="Trainr logo"
+                width={28}
+                height={28}
+                className="size-7 rounded-lg"
+                priority
+              />
               <span>{logoLabel}</span>
             </Link>
             <NavigationMenu className="max-md:hidden" viewport={false}>

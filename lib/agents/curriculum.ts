@@ -56,6 +56,8 @@ interface ModulePlan {
   roleId?: string;
   /** Keywords to attach matching research artifacts as provenance. */
   match: RegExp;
+  /** Equipment sim to attach to the generated module (e.g. 'sim_boba_station'). */
+  simId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +209,7 @@ function planModules(input: CurriculumInput): ModulePlan[] {
         'what to do when something breaks',
       ],
       match: /machine|equipment|sealer|blender|brewer|calibrat/i,
+      simId: 'sim_boba_station',
     });
   }
   if (intake?.directContext) {
@@ -394,6 +397,7 @@ export async function generateCurriculum(
         sourceArtifactIds: artifactIdsFor(plan, research),
       };
       if (plan.roleId) mod.roleId = plan.roleId;
+      if (plan.simId) mod.simId = plan.simId;
       return mod;
     }),
   );

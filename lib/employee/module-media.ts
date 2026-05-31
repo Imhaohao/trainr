@@ -1,10 +1,11 @@
 import { getDb } from '@/lib/contracts/db';
 import { getStorage } from '@/lib/contracts/storage';
-import { resolveSimForModule } from '@/lib/employee/equipment';
+import { resolveEquipmentSim } from '@/lib/employee/equipment';
 import type { RtrvrScrapedTab } from '@/lib/integrations/rtrvr-scrape';
 import { pickPreviewImage } from '@/lib/integrations/rtrvr-scrape';
 import { tigrisKeys } from '@/lib/integrations/tigris';
 import type { TrainingModule } from '@/types';
+import type { EquipmentMachineAsset } from '@/types/training';
 
 export type ModuleMediaImage = {
   url: string;
@@ -88,19 +89,50 @@ async function imagesFromArtifactIds(
   return images;
 }
 
-async function modelsFromSim(
+/**
+ * Broad keyword check: does this text mention any boba-bar machine at all?
+ * Used as a cheap pre-filter before hitting the equipment catalog.
+ */
+const MACHINE_KEYWORDS_RE =
+  /\b(sealer?|seal(ing)?\s*machine|shaker?|pearl\s*cooker|tea\s*brewer|brewer|fructose|dispenser|cup\s*press|cup\s*seal|boba\s*machine|blender|equipment|machine)\b/i;
+
+/**
+ * Filter an asset list to those whose name / category / id / propName appear
+ * in the given markdown text.  Used to show only the machines a module
+ * actually mentions rather than the full catalog.
+ */
+function filterAssetsByContent(
+  assets: EquipmentMachineAsset[],
+  contentMarkdown: string,
+): EquipmentMachineAsset[] {
+  const lower = contentMarkdown.toLowerCase();
+  return assets.filter((asset) => {
+    const terms = [
+      asset.name,
+      asset.category,
+      asset.id.replace(/_/g, ' '),
+      asset.propName,
+    ].filter((t): t is string => Boolean(t));
+    return terms.some((t) => lower.includes(t.toLowerCase()));
+  });
+}
+
+/**
+ * Given a resolved asset list, check Tigris for uploaded GLBs and build the
+ * ModuleMedia output.  Pure I/O — no sim resolution happens here.
+ */
+async function buildModelsFromAssets(
   businessId: string,
-  moduleId: string,
+  assets: EquipmentMachineAsset[],
 ): Promise<{ images: ModuleMediaImage[]; models: ModuleMediaModel[] }> {
-  const sim = await resolveSimForModule(moduleId, businessId);
-  if (!sim?.assets?.length) return { images: [], models: [] };
+  if (!assets.length) return { images: [], models: [] };
 
   const storage = getStorage();
   const images: ModuleMediaImage[] = [];
   const models: ModuleMediaModel[] = [];
   const seenImg = new Set<string>();
 
-  for (const asset of sim.assets) {
+  for (const asset of assets) {
     let glbUrl: string | undefined;
     const glbKey = tigrisKeys.equipmentModel(businessId, asset.id);
     try {
@@ -110,19 +142,28 @@ async function modelsFromSim(
       glbUrl = undefined;
     }
 
+    // If the catalog has a direct preview image use it.  Otherwise build an
+    // /api/og-image proxy URL so the showcase can still show something while
+    // the user hasn't uploaded a GLB yet.
+    const previewUrl =
+      asset.previewImageUrl ??
+      (asset.productUrl
+        ? `/api/og-image?url=${encodeURIComponent(asset.productUrl)}`
+        : undefined);
+
     models.push({
       id: asset.id,
       name: asset.name,
-      previewUrl: asset.previewImageUrl,
+      previewUrl,
       productUrl: asset.productUrl,
       glbUrl,
       provider: asset.provider,
     });
 
-    if (asset.previewImageUrl && !seenImg.has(asset.previewImageUrl)) {
-      seenImg.add(asset.previewImageUrl);
+    if (previewUrl && !seenImg.has(previewUrl)) {
+      seenImg.add(previewUrl);
       images.push({
-        url: asset.previewImageUrl,
+        url: previewUrl,
         alt: asset.name,
         source: 'equipment',
         credit: asset.provider,
@@ -142,7 +183,28 @@ export async function resolveModuleMedia(
     businessId,
     module.sourceArtifactIds ?? [],
   );
-  const equipment = await modelsFromSim(businessId, module.id);
+
+  // --- Equipment model resolution ---
+  //
+  // Two paths:
+  //   1. module.simId is set (stamped by curriculum on the dedicated equipment
+  //      module) → show ALL assets from that sim (the full catalog).
+  //   2. No simId but content mentions machine keywords → fetch the default
+  //      boba-station sim and show only the machines actually mentioned.
+  //
+  // Either way the sim is resolved via RTRVR (with fixture fallback), so the
+  // models always reflect whatever RTRVR discovered.
+  let equipmentAssets: EquipmentMachineAsset[] = [];
+
+  if (module.simId) {
+    const sim = await resolveEquipmentSim(module.simId, businessId);
+    equipmentAssets = sim?.assets ?? [];
+  } else if (MACHINE_KEYWORDS_RE.test(module.contentMarkdown)) {
+    const sim = await resolveEquipmentSim('sim_boba_station', businessId);
+    equipmentAssets = filterAssetsByContent(sim?.assets ?? [], module.contentMarkdown);
+  }
+
+  const equipment = await buildModelsFromAssets(businessId, equipmentAssets);
 
   const seen = new Set<string>();
   const images: ModuleMediaImage[] = [];

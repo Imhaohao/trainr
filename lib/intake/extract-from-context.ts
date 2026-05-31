@@ -8,7 +8,6 @@ import { getLlm } from '@/lib/contracts/llm';
 import type { LanguageCode, Recipe } from '@/types';
 import { INDUSTRIES } from '@/lib/intake/industries';
 import {
-  extractSchema,
   type ExtractedIntake,
   type IntakeExtractResult,
 } from '@/lib/intake/extract-types';
@@ -16,15 +15,179 @@ import {
 export type { ExtractedIntake, IntakeExtractResult } from '@/lib/intake/extract-types';
 export { toBusinessRoles } from '@/lib/intake/extract-types';
 
-function parseJsonFromLlm(raw: string): ExtractedIntake | null {
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
+// Strip our own context-block delimiters ("--- file.pdf ---") and OCR noise
+// ("Tab 1") so the model doesn't mistake them for a business name.
+function cleanContextText(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      if (/^---\s.*\s---$/.test(t)) return false; // context block header
+      if (/^tab\s+\d+$/i.test(t)) return false; // Google Doc tab marker
+      return true;
+    })
+    .join('\n')
+    .trim();
+}
+
+// A business name should never be a filename or a leftover delimiter.
+function looksLikeFilenameOrDelimiter(value: string): boolean {
+  const t = value.trim();
+  return (
+    t.startsWith('---') ||
+    t.endsWith('---') ||
+    /\.(pdf|docx?|txt|png|jpe?g)\b/i.test(t)
+  );
+}
+
+function tryParse(s: string): unknown | null {
   try {
-    const parsed = extractSchema.safeParse(JSON.parse(jsonMatch[0]));
-    return parsed.success ? parsed.data : null;
+    return JSON.parse(s);
   } catch {
     return null;
   }
+}
+
+// Best-effort repair of truncated JSON: close any open string, drop a dangling
+// key/colon/comma, and append the missing closing brackets in the right order.
+function repairTruncatedJson(input: string): string {
+  let inStr = false;
+  let esc = false;
+  const stack: string[] = [];
+  for (let i = 0; i < input.length; i++) {
+    const c = input[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    else if (c === '{') stack.push('}');
+    else if (c === '[') stack.push(']');
+    else if (c === '}' || c === ']') stack.pop();
+  }
+
+  let out = input;
+  if (inStr) out += '"';
+  out = out.replace(/\s+$/, '');
+  // A dangling key with no value: drop it (e.g. `{"a":1,"partial"` -> `{"a":1`).
+  out = out.replace(/([[{,])\s*"[^"]*"$/, '$1');
+  // A dangling colon: give it a null value (e.g. `"a":` -> `"a":null`).
+  if (out.endsWith(':')) out += 'null';
+  // Trailing comma or open-bracket boundary.
+  out = out.replace(/,\s*$/, '');
+
+  while (stack.length) out += stack.pop();
+  return out;
+}
+
+// Extract a JSON object from an LLM reply that may be fenced, prose-wrapped, or
+// truncated by the token limit. Returns the first parseable object or null.
+function parseLlmObject(raw: string): Record<string, unknown> | null {
+  let s = raw.trim();
+  // Strip ```json … ``` fences.
+  s = s.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  const start = s.indexOf('{');
+  if (start === -1) return null;
+  s = s.slice(start);
+
+  // 1) Direct parse, 2) greedy first-to-last brace, 3) truncation repair.
+  const candidates = [s];
+  const lastBrace = s.lastIndexOf('}');
+  if (lastBrace > 0) candidates.push(s.slice(0, lastBrace + 1));
+  candidates.push(repairTruncatedJson(s));
+
+  for (const candidate of candidates) {
+    const parsed = tryParse(candidate);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+function asString(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+function asCount(v: unknown): number | undefined {
+  const n =
+    typeof v === 'number'
+      ? v
+      : typeof v === 'string'
+        ? parseInt(v.replace(/[^\d]/g, ''), 10)
+        : NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+function asStringArray(v: unknown): string[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out = v
+    .map((x) => (typeof x === 'string' ? x.trim() : ''))
+    .filter(Boolean);
+  return out.length ? out : undefined;
+}
+
+// Lenient field-by-field mapping so a single malformed field never discards the
+// whole extraction (unlike a strict schema parse).
+function coerceExtracted(obj: Record<string, unknown>): ExtractedIntake {
+  const name = asString(obj.name);
+  const rolesRaw = Array.isArray(obj.roles) ? obj.roles : [];
+  const roles = rolesRaw
+    .map((r) => {
+      if (!r || typeof r !== 'object') return null;
+      const rec = r as Record<string, unknown>;
+      const title = asString(rec.title);
+      if (!title) return null;
+      return {
+        title,
+        customerFacing:
+          typeof rec.customerFacing === 'boolean' ? rec.customerFacing : undefined,
+        description: asString(rec.description),
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+
+  const recipesRaw = Array.isArray(obj.recipes) ? obj.recipes : [];
+  const recipes: Recipe[] = recipesRaw
+    .map((r) => {
+      if (!r || typeof r !== 'object') return null;
+      const rec = r as Record<string, unknown>;
+      const recipeName = asString(rec.name);
+      if (!recipeName) return null;
+      return {
+        name: recipeName,
+        ingredients: asStringArray(rec.ingredients) ?? [],
+        steps: asStringArray(rec.steps) ?? [],
+      };
+    })
+    .filter((r): r is Recipe => r !== null);
+
+  return {
+    name: name && !looksLikeFilenameOrDelimiter(name) ? name : undefined,
+    industry: asString(obj.industry),
+    address: asString(obj.address),
+    state: asString(obj.state),
+    employeeCount: asCount(obj.employeeCount),
+    demographics: asString(obj.demographics),
+    mission: asString(obj.mission),
+    languages: asStringArray(obj.languages),
+    roles: roles.length ? roles : undefined,
+    openingClosing: asString(obj.openingClosing),
+    cleaning: asString(obj.cleaning),
+    machineOperations: asString(obj.machineOperations),
+    drinkProduction: asString(obj.drinkProduction),
+    notes: asString(obj.notes),
+    recipes: recipes.length ? recipes : undefined,
+  };
+}
+
+function parseJsonFromLlm(raw: string): ExtractedIntake | null {
+  const obj = parseLlmObject(raw);
+  if (!obj) return null;
+  return coerceExtracted(obj);
 }
 
 function matchIndustry(text: string): string | undefined {
@@ -46,11 +209,12 @@ function mockExtractFromContext(text: string): ExtractedIntake {
   const nameLine = lines.find((l) =>
     /^(business|company|store|location)\s*[:—-]/i.test(l),
   );
+  const firstUsable = lines.find(
+    (l) => l.length < 80 && !looksLikeFilenameOrDelimiter(l),
+  );
   const name = nameLine
     ? nameLine.replace(/^[^:]+:\s*/i, '').trim()
-    : lines[0]?.length < 80
-      ? lines[0]
-      : undefined;
+    : firstUsable;
 
   const addressMatch = text.match(
     /\d{1,5}\s+[\w\s.]+\s*,\s*[\w\s]+,\s*[A-Z]{2}\s*\d{5}/,
@@ -163,7 +327,7 @@ function filledKeys(data: ExtractedIntake): string[] {
 export async function extractIntakeFromContext(
   documentText: string,
 ): Promise<IntakeExtractResult> {
-  const text = documentText.trim();
+  const text = cleanContextText(documentText.trim());
   if (!text) {
     return { extracted: {}, filledFields: [] };
   }
@@ -179,8 +343,9 @@ export async function extractIntakeFromContext(
   const llm = getLlm();
   const industryList = INDUSTRIES.join(' | ');
   const raw = await llm.generate({
-    system: `You extract structured business onboarding data from owner documents.
-Return ONLY valid JSON matching this shape (omit unknown fields):
+    system: `You extract structured business onboarding data from owner documents
+(employee handbooks, SOPs, recipe sheets). The document may concatenate several
+files. Return ONLY valid JSON matching this shape (omit fields you cannot fill):
 {
   "name": string,
   "industry": one of [${industryList}],
@@ -198,17 +363,29 @@ Return ONLY valid JSON matching this shape (omit unknown fields):
   "notes": string,
   "recipes": [{ "name": string, "ingredients": string[], "steps": string[] }]
 }
-Use multiline strings only inside JSON string values. Do not invent data not supported by the document.`,
+Rules:
+- Fill every field the document supports. Synthesize the operations fields
+  (openingClosing, cleaning, machineOperations, drinkProduction) into clear,
+  readable multi-line instructions rather than copying raw fragments.
+- Capture ALL roles and ALL recipes you find, not just the first one.
+- NEVER use a file name, document title, or "--- ... ---" delimiter as "name".
+  If the business name isn't clearly stated, omit "name".
+- Use multiline strings only inside JSON string values. Do not invent data.`,
     messages: [
       {
         role: 'user',
-        content: `Extract onboarding fields from this document:\n\n${text.slice(0, 24_000)}`,
+        content: `Extract onboarding fields from this document:\n\n${text.slice(0, 40_000)}`,
       },
     ],
-    maxTokens: 2048,
+    maxTokens: 8_000,
   });
 
   const parsed = parseJsonFromLlm(raw);
+  if (!parsed) {
+    console.warn(
+      '[intake/extract] LLM JSON parse failed; falling back to heuristic extractor.',
+    );
+  }
   const extracted = parsed ?? mockExtractFromContext(text);
   if (extracted.languages) {
     extracted.languages = normalizeLanguages(extracted.languages) as string[];

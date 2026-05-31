@@ -1,9 +1,9 @@
-import Link from 'next/link';
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui';
 import type { ComplianceReport } from '@/lib/compliance/report';
 import { AppliedLawCard } from './AppliedLawCard';
 import { ComplianceHeader } from './ComplianceHeader';
 import { OpseraGovernancePanel } from './OpseraGovernancePanel';
+import { PublishTrainingButton } from './PublishTrainingButton';
 
 function formatTimestamp(iso: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -34,9 +34,10 @@ export function ComplianceDashboard({
               modules.
             </p>
           </div>
-          <Link href="/deploy">
-            <Button size="sm">Publish training</Button>
-          </Link>
+          <PublishTrainingButton
+            businessId={snapshot.businessId}
+            version={snapshot.programVersion}
+          />
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">

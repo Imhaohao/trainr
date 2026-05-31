@@ -116,11 +116,31 @@ export async function rtrvrScrapeUrl(url: string): Promise<RtrvrScrapedTab | nul
   return null;
 }
 
-/** Pick the first image URL from RTRVR link map (product previews). */
+/** Pick the best product-preview image URL from an RTRVR-scraped tab.
+ *
+ * Search order (first hit wins):
+ *  1. elementLinkRecord value where the KEY looks like an og:image meta selector
+ *  2. Any elementLinkRecord value that is an absolute URL ending in an image ext
+ *  3. Any absolute image URL buried in the serialised tree / text blob
+ */
 export function pickPreviewImage(tab: RtrvrScrapedTab): string | undefined {
   const links = tab.elementLinkRecord ?? {};
-  for (const href of Object.values(links)) {
-    if (/\.(png|jpe?g|webp)(\?|$)/i.test(href)) return href;
+
+  // 1. OG / twitter card meta — RTRVR records these with keys like
+  //    'meta[property="og:image"]' or 'meta[name="twitter:image"]'
+  for (const [key, href] of Object.entries(links)) {
+    if (/og:image|twitter:image/i.test(key) && href?.startsWith('http')) return href;
   }
+
+  // 2. Any link value that is a direct image file URL
+  for (const href of Object.values(links)) {
+    if (href && /\.(png|jpe?g|webp)(\?|$)/i.test(href)) return href;
+  }
+
+  // 3. Scan tree / text for the first absolute https image URL
+  const blob = (tab.tree ?? '') + (tab.text ?? '');
+  const m = blob.match(/https?:\/\/[^\s"'<>]+\.(?:png|jpe?g|webp)(?:\?[^\s"'<>]*)?/i);
+  if (m) return m[0];
+
   return undefined;
 }

@@ -23,7 +23,9 @@ export function googleDocExportUrl(docId: string): string {
 
 export async function extractPdfText(bytes: Buffer): Promise<string> {
   // pdf-parse is CJS; dynamic import keeps Next bundling happy.
-  const pdfParse = (await import('pdf-parse')).default;
+  // Import the lib file directly — the package's index.js has a debug block
+  // that reads a bundled test PDF at load time and throws ENOENT.
+  const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
   const result = await pdfParse(bytes);
   return truncateContext(result.text ?? '');
 }
