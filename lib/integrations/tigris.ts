@@ -138,4 +138,11 @@ export const tigrisKeys = {
     `${businessId}/pdf/${filename}`,
   i18n: (businessId: string, lang: string, filename: string) =>
     `${businessId}/i18n/${lang}/${filename}`,
+  equipmentCatalog: (businessId: string) => `${businessId}/equipment/catalog.json`,
+  equipmentSim: (businessId: string, simId: string) =>
+    `${businessId}/equipment/${simId}.json`,
+  equipmentScrape: (businessId: string, provider: string) =>
+    `${businessId}/equipment/scrapes/${provider}.json`,
+  equipmentModel: (businessId: string, machineId: string) =>
+    `${businessId}/equipment/models/${machineId}.glb`,
 };

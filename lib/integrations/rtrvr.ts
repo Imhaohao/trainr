@@ -21,28 +21,11 @@ import { getDb } from '../contracts/db';
 import { getLlm } from '../contracts/llm';
 import { getStorage, tigrisKeys } from './tigris';
 import { mockResearch } from '../mocks/mock-research';
+import {
+  rtrvrScrapeUrl,
+} from './rtrvr-scrape';
 
-const DEFAULT_BASE = 'https://api.rtrvr.ai';
-const SCRAPE_TIMEOUT_MS = 120_000;
-const MAX_INLINE_BYTES = 5_000_000; // ask for inline payload up to 5MB (trees are big)
 const SUMMARY_INPUT_CHARS = 6_000;
-
-// ---------------------------------------------------------------------------
-// RTRVR /scrape wire types (only the fields we read).
-// ---------------------------------------------------------------------------
-interface ScrapedTab {
-  url?: string;
-  title?: string;
-  text?: string;
-  tree?: string; // JSON-encoded accessibility/DOM tree
-  elementLinkRecord?: Record<string, string>;
-}
-interface ScrapeResponse {
-  status?: 'success' | 'error';
-  tabs?: ScrapedTab[];
-  metadata?: { outputTooLarge?: boolean; responseRef?: unknown };
-  error?: string;
-}
 
 // ---------------------------------------------------------------------------
 // Query → target resolution. Each research query maps to an authoritative seed
@@ -228,41 +211,8 @@ async function scrapeTarget(
   target: ResearchTarget,
   businessId: string,
 ): Promise<ResearchArtifact | null> {
-  const base = process.env.RTRVR_BASE_URL || DEFAULT_BASE;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), SCRAPE_TIMEOUT_MS);
-
-  let tab: ScrapedTab | undefined;
-  try {
-    const res = await fetch(`${base}/scrape`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.RTRVR_API_KEY ?? ''}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        urls: [target.url],
-        settings: { extractionConfig: { onlyTextContent: false } },
-        response: { inlineOutputMaxBytes: MAX_INLINE_BYTES },
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) throw new Error(`RTRVR /scrape ${res.status}: ${await res.text()}`);
-    const data = (await res.json()) as ScrapeResponse;
-    if (data.status === 'error') throw new Error(`RTRVR error: ${data.error}`);
-    tab = data.tabs?.[0];
-    if (!tab && data.metadata?.responseRef) {
-      // Payload exceeded the inline cap; we keep what metadata we have rather
-      // than fail the whole run. (Fetching the storage ref is a future upgrade.)
-      tab = { url: target.url, text: '' };
-    }
-    if (!tab) throw new Error('RTRVR returned no tab for ' + target.url);
-  } catch (err) {
-    console.error(`[rtrvr] scrape failed for ${target.url}:`, err);
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const tab = await rtrvrScrapeUrl(target.url);
+  if (!tab) return null;
 
   const id = `res_${nanoid(10)}`;
   const structuredKey = tigrisKeys.research(businessId, id);

@@ -47,9 +47,21 @@ export type SimStep = {
 };
 
 export type SimSource = {
-  kind: 'fixture' | 'mcp';
+  kind: 'fixture' | 'mcp' | 'rtrvr';
   ref: string;
   retrievedAt: string;
+};
+
+export type EquipmentMachineAsset = {
+  id: string;
+  name: string;
+  category: string;
+  propName?: string;
+  provider: 'daz3d' | 'cgtrader' | 'sketchfab' | 'other';
+  productUrl: string;
+  formats?: string[];
+  previewImageUrl?: string;
+  notes?: string;
 };
 
 export type EquipmentSim = {
@@ -63,6 +75,10 @@ export type EquipmentSim = {
   passScore: number;
   steps: SimStep[];
   source: SimSource;
+  /** RTRVR-discovered 3D model sources (Daz / CGTrader listings). */
+  assets?: EquipmentMachineAsset[];
+  /** GLB export workflow markdown when catalog was built via RTRVR. */
+  exportGuide?: string;
 };
 
 export type SimAttempt = { stepId: string; actionId: string };

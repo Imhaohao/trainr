@@ -1,4 +1,4 @@
-import { getEquipmentSim } from '@/lib/employee/equipment';
+import { resolveEquipmentSim } from '@/lib/employee/equipment';
 import { simDebrief } from '@/lib/coach/llm';
 import {
   stepCorrectFeedback,
@@ -20,7 +20,7 @@ export async function gradeSimRun(
   const employee = await getEmployee(employeeId);
   if (!employee || employee.role !== 'employee') return undefined;
 
-  const sim = getEquipmentSim(simId, employee.businessId);
+  const sim = await resolveEquipmentSim(simId, employee.businessId);
   if (!sim || sim.businessId !== employee.businessId) return undefined;
 
   const attemptByStep = new Map(attempts.map((a) => [a.stepId, a.actionId]));

@@ -99,6 +99,12 @@ export function SimStation({ sim, nextModuleHref }: SimStationProps) {
     sim.descriptionVariants,
     language,
   );
+  const sourceLabel =
+    sim.source.kind === 'rtrvr' ? ui.rtrvrLabel : ui.fixtureLabel;
+  const sourceClass =
+    sim.source.kind === 'rtrvr'
+      ? 'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200'
+      : 'bg-amber-500/15 text-amber-800 dark:text-amber-200';
 
   if (result) {
     return (
@@ -195,11 +201,45 @@ export function SimStation({ sim, nextModuleHref }: SimStationProps) {
             <CardTitle className="text-lg">{ui.practiceStation}</CardTitle>
             <p className="mt-1 text-sm font-medium text-foreground">{simName}</p>
           </div>
-          <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-800 dark:text-amber-200">
-            {ui.fixtureLabel}
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${sourceClass}`}
+          >
+            {sourceLabel}
           </span>
         </div>
         <p className="text-sm text-muted-foreground">{simDescription}</p>
+        {sim.assets && sim.assets.length > 0 && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              {ui.equipmentAssetsTitle}
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {sim.assets.map((asset) => (
+                <li key={asset.id}>
+                  <a
+                    href={asset.productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-xs transition hover:border-primary/40 hover:bg-brand-soft"
+                  >
+                    {asset.previewImageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={asset.previewImageUrl}
+                        alt=""
+                        className="h-5 w-5 rounded object-cover"
+                      />
+                    ) : (
+                      <span aria-hidden>🧋</span>
+                    )}
+                    <span>{asset.name}</span>
+                    <span className="text-muted-foreground">({asset.provider})</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {!started ? (
