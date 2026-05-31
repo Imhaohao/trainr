@@ -70,7 +70,14 @@ export default async function DashboardPage() {
       <JoinCodeCard joinCode={business.joinCode} />
 
       {program ? (
-        <ProgramReview businessId={business.id} program={program} />
+        <>
+          <ProgramReview businessId={business.id} program={program} />
+          <GenerationPanel
+            businessId={business.id}
+            initialStatus={business.status}
+            regenerate
+          />
+        </>
       ) : (
         <GenerationPanel
           businessId={business.id}

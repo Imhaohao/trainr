@@ -9,8 +9,12 @@ import { ok, fail } from '@/lib/http';
 import { ownedBusinessOr403 } from '@/lib/auth';
 import {
   appendContextSource,
+  extractDocxText,
   extractPdfText,
+  isDocxFile,
+  isPdfFile,
 } from '@/lib/intake/context-extract';
+import type { ContextSourceType } from '@/types';
 import type { IntakeProfile, StoredFile, StoredFileKind } from '@/types';
 
 export async function POST(
@@ -57,19 +61,30 @@ export async function POST(
 
   let extractedChars: number | undefined;
   let preview: string | undefined;
-  const isPdf =
-    file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  let parseError: string | undefined;
+  const contentType = file.type || 'application/octet-stream';
+  const contextType: ContextSourceType | null = isPdfFile(file.name, contentType)
+    ? 'pdf'
+    : isDocxFile(file.name, contentType)
+      ? 'docx'
+      : null;
 
-  if (isPdf) {
+  if (contextType) {
     try {
-      const extractedText = await extractPdfText(bytes);
+      const extractedText =
+        contextType === 'pdf'
+          ? await extractPdfText(bytes)
+          : await extractDocxText(bytes);
+      if (!extractedText.trim()) {
+        throw new Error('No readable text found.');
+      }
       extractedChars = extractedText.length;
       preview = extractedText.slice(0, 400);
       const existing = await db.intake.get(businessId);
       const patch = appendContextSource(
         existing,
         {
-          type: 'pdf',
+          type: contextType,
           label: file.name,
           fileId: fileId,
           extractedAt: new Date().toISOString(),
@@ -78,20 +93,22 @@ export async function POST(
       );
       const next: IntakeProfile = {
         businessId,
+        ...existing,
         uploadedFileIds: [
           ...(existing?.uploadedFileIds ?? []),
           fileId,
         ],
         menuImageIds: existing?.menuImageIds ?? [],
-        ...existing,
         ...patch,
       };
       if (existing) await db.intake.update(businessId, next);
       else await db.intake.create(next);
     } catch (err) {
-      console.error('[files] PDF text extraction failed:', err);
+      const reason = err instanceof Error ? err.message : 'Unknown parser error';
+      parseError = `Could not parse ${contextType.toUpperCase()} text: ${reason}`;
+      console.error(`[files] ${parseError}`, err);
     }
   }
 
-  return ok({ file: stored, extractedChars, preview });
+  return ok({ file: stored, extractedChars, preview, parseError });
 }

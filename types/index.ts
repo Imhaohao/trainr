@@ -72,7 +72,7 @@ export interface Recipe {
   steps: string[];
 }
 
-export type ContextSourceType = 'pdf' | 'google_doc' | 'upload';
+export type ContextSourceType = 'pdf' | 'docx' | 'google_doc' | 'upload';
 
 export interface ContextSource {
   type: ContextSourceType;
@@ -90,7 +90,7 @@ export interface IntakeProfile {
   drinkProduction?: string;
   recipes?: Recipe[];
   notes?: string;
-  /** Parsed text from PDFs and Google Docs — fed to curriculum generation. */
+  /** Parsed text from PDFs, Word docs, and Google Docs — fed to curriculum generation. */
   directContext?: string;
   contextSources?: ContextSource[];
   googleDocUrls?: string[];

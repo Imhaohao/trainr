@@ -28,8 +28,18 @@ export async function POST(
     drinkProduction: body.drinkProduction ?? existing?.drinkProduction,
     recipes: body.recipes ?? existing?.recipes ?? [],
     notes: body.notes ?? existing?.notes,
-    uploadedFileIds: body.uploadedFileIds ?? existing?.uploadedFileIds ?? [],
-    menuImageIds: body.menuImageIds ?? existing?.menuImageIds ?? [],
+    uploadedFileIds: [
+      ...new Set([
+        ...(existing?.uploadedFileIds ?? []),
+        ...(body.uploadedFileIds ?? []),
+      ]),
+    ],
+    menuImageIds: [
+      ...new Set([
+        ...(existing?.menuImageIds ?? []),
+        ...(body.menuImageIds ?? []),
+      ]),
+    ],
     directContext: existing?.directContext,
     contextSources: existing?.contextSources,
     googleDocUrls: existing?.googleDocUrls,

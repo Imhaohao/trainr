@@ -1,4 +1,4 @@
-// Server-side extraction for owner-provided context (PDF uploads, Google Docs).
+// Server-side extraction for owner-provided context (PDFs, Word docs, Google Docs).
 
 import type { ContextSource, IntakeProfile } from '@/types';
 
@@ -26,6 +26,25 @@ export async function extractPdfText(bytes: Buffer): Promise<string> {
   const pdfParse = (await import('pdf-parse')).default;
   const result = await pdfParse(bytes);
   return truncateContext(result.text ?? '');
+}
+
+export function isPdfFile(name: string, contentType: string): boolean {
+  return contentType === 'application/pdf' || name.toLowerCase().endsWith('.pdf');
+}
+
+export function isDocxFile(name: string, contentType: string): boolean {
+  const lower = name.toLowerCase();
+  return (
+    contentType ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+    lower.endsWith('.docx')
+  );
+}
+
+export async function extractDocxText(bytes: Buffer): Promise<string> {
+  const mammoth = await import('mammoth');
+  const result = await mammoth.extractRawText({ buffer: bytes });
+  return truncateContext(result.value ?? '');
 }
 
 export async function fetchGoogleDocText(url: string): Promise<string> {

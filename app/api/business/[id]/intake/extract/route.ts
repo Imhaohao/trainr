@@ -1,5 +1,5 @@
 // POST /api/business/:id/intake/extract
-// Structure fields from parsed directContext (PDF / Google Doc).
+// Structure fields from parsed directContext (PDF / Word doc / Google Doc).
 
 import { getDb } from '@/lib/contracts/db';
 import { ownedBusinessOr403 } from '@/lib/auth';
@@ -18,7 +18,7 @@ export async function POST(
   const text = intake?.directContext?.trim();
   if (!text) {
     return fail(
-      'Upload a PDF or import a Google Doc first, then try again.',
+      'Upload a PDF or Word doc (.docx), or import a Google Doc first, then try again.',
       400,
     );
   }

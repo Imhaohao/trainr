@@ -28,9 +28,9 @@ export function DashboardContextPanel({
       <CardHeader>
         <CardTitle>Training context</CardTitle>
         <CardDescription>
-          Add PDFs or Google Docs anytime — parsed text feeds the next program
-          generation. Your address and website on file drive automatic industry
-          research via RTRVR.
+          Add PDFs, Word docs (.docx), or Google Docs anytime — parsed text
+          feeds the next program generation. Your address and website on file
+          drive automatic industry research via RTRVR.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

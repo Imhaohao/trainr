@@ -37,17 +37,27 @@ function isInFlightBusinessStatus(status: BusinessStatus): boolean {
   return status === 'researching' || status === 'generating';
 }
 
-// Shown when the business has no program yet. Triggers the pipeline and polls
-// /status until a program exists, then refreshes the page to render it.
+const TERMINAL_STAGES = new Set(['idle', 'ready', 'error']);
+
+function isActivePipelineStage(stage: string): boolean {
+  return !TERMINAL_STAGES.has(stage);
+}
+
+// Shown when the business has no program yet, or when the owner wants to
+// regenerate. Triggers the pipeline and polls /status until a program exists,
+// then refreshes the page to render it.
 export function GenerationPanel({
   businessId,
   initialStatus,
+  regenerate = false,
 }: {
   businessId: string;
   initialStatus: BusinessStatus;
+  regenerate?: boolean;
 }) {
   const router = useRouter();
   const inProgress = isInFlightBusinessStatus(initialStatus);
+  const wasRunningRef = React.useRef(inProgress);
   const [running, setRunning] = React.useState(inProgress);
   const [stage, setStage] = React.useState<string>(
     inProgress ? initialStatus : 'idle',
@@ -60,14 +70,22 @@ export function GenerationPanel({
       setStage(data.stage);
       setPct(data.pct);
       if (data.stage === 'error') {
+        wasRunningRef.current = false;
         setRunning(false);
         setError(data.error ?? 'Generation failed. You can try again.');
         return;
       }
-      if (data.stage === 'ready' && data.programId) {
+      if (data.stage === 'ready' && data.programId && wasRunningRef.current) {
+        wasRunningRef.current = false;
         setRunning(false);
         setError(null);
         router.refresh();
+        return;
+      }
+      if (isActivePipelineStage(data.stage)) {
+        wasRunningRef.current = true;
+        setRunning(true);
+        setError(null);
       }
     },
     [router],
@@ -81,6 +99,10 @@ export function GenerationPanel({
     if (!json.ok) return;
     applyStatus(json.data as StatusResponse);
   }, [businessId, applyStatus]);
+
+  React.useEffect(() => {
+    void poll();
+  }, [poll]);
 
   React.useEffect(() => {
     if (!running) return;
@@ -97,6 +119,7 @@ export function GenerationPanel({
 
   async function start() {
     setError(null);
+    wasRunningRef.current = true;
     setRunning(true);
     setStage('research');
     setPct(0);
@@ -116,11 +139,15 @@ export function GenerationPanel({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Training program</CardTitle>
+        <CardTitle>{regenerate ? 'Regenerate program' : 'Training program'}</CardTitle>
         <CardDescription>
           {running
-            ? 'Your program is being built. This page updates automatically.'
-            : 'Generate a structured, multilingual training program from your intake.'}
+            ? regenerate
+              ? 'Building a fresh program from your latest intake. This page updates automatically.'
+              : 'Your program is being built. This page updates automatically.'
+            : regenerate
+              ? 'Create a new version from your current intake and uploaded documents.'
+              : 'Generate a structured, multilingual training program from your intake.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -133,8 +160,12 @@ export function GenerationPanel({
             <Progress value={pct} />
           </>
         ) : (
-          <Button onClick={start}>
-            {initialStatus === 'failed' ? 'Retry generation' : 'Generate training program'}
+          <Button onClick={start} variant={regenerate ? 'outline' : 'default'}>
+            {initialStatus === 'failed'
+              ? 'Retry generation'
+              : regenerate
+                ? 'Regenerate training program'
+                : 'Generate training program'}
           </Button>
         )}
         {error && <p className="text-sm text-danger">{error}</p>}

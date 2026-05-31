@@ -7,7 +7,7 @@ import type { ContextSource } from '@/types';
 export interface ContextImportItem {
   id: string;
   label: string;
-  kind: 'pdf' | 'google_doc' | 'upload';
+  kind: 'pdf' | 'docx' | 'google_doc' | 'upload';
   extractedChars?: number;
   preview?: string;
 }
@@ -67,13 +67,25 @@ export function DirectContextImport({
     }
   }
 
-  async function onPdfUpload(files: FileList | null) {
+  async function onDocumentUpload(files: FileList | null) {
     if (!files?.length) return;
     setBusy(true);
     setError(null);
     const imported: ContextImportItem[] = [];
     try {
       for (const file of Array.from(files)) {
+        const lower = file.name.toLowerCase();
+        const isPdf =
+          file.type === 'application/pdf' || lower.endsWith('.pdf');
+        const isDocx =
+          file.type ===
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+          lower.endsWith('.docx');
+        if (!isPdf && !isDocx) {
+          setError(`Unsupported file type: ${file.name}. Use PDF or Word (.docx).`);
+          continue;
+        }
+
         const fd = new FormData();
         fd.set('file', file);
         fd.set('kind', 'upload');
@@ -86,10 +98,16 @@ export function DirectContextImport({
           setError(json.error ?? `Upload failed: ${file.name}`);
           continue;
         }
+        if (json.data.parseError || !json.data.extractedChars) {
+          setError(
+            json.data.parseError ?? `Could not read text from ${file.name}.`,
+          );
+          continue;
+        }
         const item: ContextImportItem = {
           id: json.data.file.id,
           label: file.name,
-          kind: 'pdf',
+          kind: isDocx ? 'docx' : 'pdf',
           extractedChars: json.data.extractedChars,
           preview: json.data.preview,
         };
@@ -107,9 +125,9 @@ export function DirectContextImport({
   return (
     <div className={compact ? 'space-y-3' : 'space-y-4'}>
       <p className="text-sm text-muted-foreground">
-        Drop a handbook PDF or paste a Google Doc link — we parse it server-side
-        and use it when building your training program. Share Google Docs as
-        &quot;Anyone with the link can view&quot;.
+        Drop a handbook PDF or Word doc (.docx), or paste a Google Doc link — we
+        parse it server-side and use it when building your training program.
+        Share Google Docs as &quot;Anyone with the link can view&quot;.
       </p>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -137,15 +155,15 @@ export function DirectContextImport({
       </div>
 
       <div>
-        <Label htmlFor="context-pdf">PDF upload</Label>
+        <Label htmlFor="context-doc">Document upload</Label>
         <Input
-          id="context-pdf"
+          id="context-doc"
           type="file"
-          accept="application/pdf,.pdf"
+          accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
           multiple
           className="mt-1"
           disabled={busy}
-          onChange={(e) => void onPdfUpload(e.target.files)}
+          onChange={(e) => void onDocumentUpload(e.target.files)}
         />
       </div>
 

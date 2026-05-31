@@ -37,7 +37,7 @@ import type {
 const STEPS = [
   [
     'Import business info',
-    'Upload a PDF or paste a Google Doc with your handbook, SOPs, and recipes.',
+    'Upload a PDF or Word doc (.docx), or paste a Google Doc with your handbook, SOPs, and recipes.',
   ],
   ['Business basics', 'Name, industry, address, size, languages, mission.'],
   ['Roles', 'Add roles and mark which are customer-facing.'],
@@ -365,7 +365,7 @@ export default function OnboardingWizard({
     if (step === IMPORT_STEP) {
       if (!contextReady) {
         setError(
-          'Upload a PDF or import a Google Doc, or choose “Fill out manually instead”.',
+          'Upload a PDF or Word doc (.docx), import a Google Doc, or choose “Fill out manually instead”.',
         );
         return;
       }
@@ -989,7 +989,8 @@ function UploadsStep({
       <div className="grid gap-4 sm:grid-cols-2">
         <UploadBox
           label="Documents"
-          hint="Handbooks, recipe sheets, policies (PDF, docs)."
+          hint="Handbooks, recipe sheets, policies (PDF, Word .docx)."
+          accept="application/pdf,.pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx"
           onPick={(l) => onUpload(l, 'upload')}
         />
         <UploadBox
