@@ -132,6 +132,8 @@ export const tigrisKeys = {
     `${businessId}/program/v${version}/program.json`,
   module: (businessId: string, version: number, moduleId: string) =>
     `${businessId}/program/v${version}/modules/${moduleId}.md`,
+  compliance: (businessId: string, version: number) =>
+    `${businessId}/program/v${version}/compliance.json`,
   pdf: (businessId: string, filename: string) =>
     `${businessId}/pdf/${filename}`,
   i18n: (businessId: string, lang: string, filename: string) =>

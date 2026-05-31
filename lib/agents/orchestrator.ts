@@ -26,6 +26,7 @@ import type {
 } from '../../types/index';
 
 export type PipelineStage =
+  | 'idle'
   | 'research'
   | 'curriculum'
   | 'compliance'
@@ -36,6 +37,7 @@ export type PipelineStage =
 
 // Coarse progress shown by the poller (GET /api/pipeline/:businessId/status).
 const STAGE_PCT: Record<PipelineStage, number> = {
+  idle: 0,
   research: 15,
   curriculum: 45,
   compliance: 70,
@@ -230,6 +232,8 @@ export async function runPipeline(
       compliance = { modules: result.modules, snapshot: result.snapshot };
       await saveCheckpoint('compliance', { compliance });
     }
+    // Persist compliance snapshot to Tigris (DB persistence happens inside generateCompliance).
+    await writeJson(tigrisKeys.compliance(businessId, version), compliance.snapshot);
 
     // --- Stage 4: assemble program ---------------------------------------
     await setRunStatus(status('assemble', { programId }));

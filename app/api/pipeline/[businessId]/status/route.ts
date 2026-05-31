@@ -28,7 +28,7 @@ export async function GET(
   const programs = await getDb().programs.list({ businessId });
   const program = programs.sort((a, b) => b.version - a.version)[0];
   return ok({
-    stage: program ? 'ready' : 'generating',
+    stage: program ? 'ready' : 'idle',
     pct: program ? 100 : 0,
     programId: program?.id,
     version: program?.version,
