@@ -17,6 +17,7 @@ import { tigrisKeys } from '../integrations/tigris';
 import { buildResearchQueries } from '../integrations/rtrvr';
 import { generateCurriculum, type CurriculumResult } from './curriculum';
 import { generateCompliance } from './compliance';
+import { trainingProgramSchema } from './schemas';
 import type {
   ComplianceSnapshot,
   OnboardingWeek,
@@ -244,6 +245,15 @@ export async function runPipeline(
       curriculum,
       complianceModules: compliance.modules,
     });
+
+    // Validate the assembled program meets the DoD requirements.
+    const validated = trainingProgramSchema.safeParse(program);
+    if (!validated.success) {
+      throw new Error(
+        `[orchestrator] assembled program failed validation: ${validated.error.issues.map((i) => i.message).join('; ')}`,
+      );
+    }
+
     await saveCheckpoint('assemble', {});
 
     // --- Stage 5: persist -------------------------------------------------
