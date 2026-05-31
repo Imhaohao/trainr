@@ -1,17 +1,20 @@
-// GET /api/compliance-report/:businessId -> { snapshot, laws }
-// Phase 0 STUB — owner: T4 (governance/snapshot read). Returns the latest
-// compliance snapshot for the business.
+// GET /api/compliance-report/:businessId -> snapshot, laws, moduleTitles, opsera
 
-import { getDb } from '@/lib/contracts/db';
-import { ok, fail } from '@/lib/http';
+import { ownedBusinessOr403 } from '@/lib/auth/guards';
+import { loadComplianceReport } from '@/lib/compliance/report';
+import { fail, ok } from '@/lib/http';
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ businessId: string }> },
 ) {
   const { businessId } = await params;
-  const snapshots = await getDb().compliance.list({ businessId });
-  const snapshot = snapshots.sort((a, b) => b.programVersion - a.programVersion)[0];
-  if (!snapshot) return fail('No compliance snapshot yet', 404);
-  return ok({ snapshot, laws: snapshot.appliedLaws });
+  const owned = await ownedBusinessOr403(businessId);
+  if (!owned) return fail('Unauthorized', 401);
+
+  const report = await loadComplianceReport(businessId);
+  if (!report) return fail('No compliance snapshot yet', 404);
+
+  const { snapshot, laws, moduleTitles, history, opsera } = report;
+  return ok({ snapshot, laws, moduleTitles, history, opsera });
 }

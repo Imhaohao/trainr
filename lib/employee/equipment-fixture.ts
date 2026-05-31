@@ -2,7 +2,45 @@
 // BLOCKED(mcp): replace with MCP-sourced EquipmentSim when an equipment MCP exists.
 
 import { IDS } from '@/lib/mocks/fixtures';
-import type { EquipmentSim } from '@/types/training';
+import type { EquipmentMachineAsset, EquipmentSim } from '@/types/training';
+
+const FIXTURE_EQUIPMENT_ASSETS: EquipmentMachineAsset[] = [
+  {
+    id: 'sealer',
+    name: 'Cup sealer',
+    category: 'sealer',
+    propName: 'FGS Sealer Machine',
+    provider: 'daz3d',
+    productUrl: 'https://www.daz3d.com/fg-milktea-shop',
+    formats: ['DUF', 'FBX via Daz→Blender', 'OBJ'],
+    notes: 'Primary sealer prop in FG Milktea Shop pack.',
+  },
+  {
+    id: 'shaker',
+    name: 'Shaker machine',
+    category: 'shaker',
+    propName: 'FGS Shaker Machine',
+    provider: 'daz3d',
+    productUrl: 'https://www.daz3d.com/fg-milktea-shop',
+    formats: ['DUF', 'FBX via Daz→Blender'],
+  },
+  {
+    id: 'pearl_cooker',
+    name: 'Pearl cooker',
+    category: 'cooker',
+    propName: 'FGS Pearl Cooker',
+    provider: 'daz3d',
+    productUrl: 'https://www.daz3d.com/fg-milktea-shop',
+  },
+  {
+    id: 'tea_brewer',
+    name: 'Tea brewer',
+    category: 'brew',
+    propName: 'FGS Tea Brewer',
+    provider: 'daz3d',
+    productUrl: 'https://www.daz3d.com/fg-milktea-shop',
+  },
+];
 
 const FIXTURE_RETRIEVED_AT = '2026-05-31T17:00:00.000Z';
 
@@ -28,6 +66,9 @@ export const BOBA_STATION_SIM: EquipmentSim = {
     ref: 'lib/employee/equipment-fixture.ts#sim_boba_station',
     retrievedAt: FIXTURE_RETRIEVED_AT,
   },
+  assets: FIXTURE_EQUIPMENT_ASSETS,
+  exportGuide:
+    '## 3D asset workflow (demo)\n\nFixture equipment listings mirror RTRVR-discovered Daz/CGTrader sources. Upload GLBs to enable the interactive viewer.',
   steps: [
     {
       id: 'step_hands',

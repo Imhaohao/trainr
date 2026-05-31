@@ -1,7 +1,7 @@
 "use client";
 
+import { CoachFloatingWidget } from "@/components/employee/CoachFloatingWidget";
 import {
-  CoachChat,
   type CoachSuggestion,
   moduleTitleForLocale,
 } from "@/components/employee/CoachChat";
@@ -86,7 +86,8 @@ export function CoachPageClient({
   }
 
   return (
-    <CoachChat
+    <CoachFloatingWidget
+      defaultOpen
       autoStart={
         shouldAutoStart && autoStartMod
           ? {

@@ -16,10 +16,12 @@ export type AiAssistatProps = {
   title?: string;
   description?: string;
   className?: string;
+  variant?: "default" | "floating";
   messages?: AiAssistatMessage[];
   onSend?: (message: string) => void | Promise<void>;
   isTyping?: boolean;
   onClear?: () => void;
+  onClose?: () => void;
   disabled?: boolean;
   placeholder?: string;
 };
@@ -48,10 +50,12 @@ function AiAssistat({
   title = "AI Assistant",
   description = "Ask me anything and I'll do my best to assist you!",
   className,
+  variant = "default",
   messages: controlledMessages,
   onSend,
   isTyping: controlledIsTyping,
   onClear,
+  onClose,
   disabled = false,
   placeholder = "Type your message...",
 }: AiAssistatProps) {
@@ -109,7 +113,10 @@ function AiAssistat({
   return (
     <div
       className={cn(
-        "mx-auto flex h-[600px] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-indigo-500/20 bg-gradient-to-br from-slate-900 to-indigo-950 shadow-2xl",
+        "flex flex-col overflow-hidden rounded-xl border border-indigo-500/20 bg-gradient-to-br from-slate-900 to-indigo-950 shadow-2xl",
+        variant === "floating"
+          ? "h-[min(520px,calc(100dvh-6rem))] w-[min(380px,calc(100vw-2rem))]"
+          : "mx-auto h-[600px] w-full max-w-xl",
         className,
       )}
     >
@@ -122,9 +129,9 @@ function AiAssistat({
           type="button"
           variant="ghost"
           size="icon-sm"
-          onClick={clearChat}
+          onClick={onClose ?? clearChat}
           className="text-indigo-200 hover:bg-indigo-500/20 hover:text-white"
-          aria-label="Clear chat"
+          aria-label={onClose ? "Close chat" : "Clear chat"}
         >
           <X className="h-4 w-4" />
         </Button>

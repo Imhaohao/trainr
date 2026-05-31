@@ -4,10 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
+import { CoachFloatingWidget } from "@/components/employee/CoachFloatingWidget";
+import { ModuleContent } from "@/components/employee/ModuleContent";
 import { QuizPanel } from "@/components/employee/QuizPanel";
 import { SimStation } from "@/components/employee/SimStation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
-import { getEmployeeUi } from "@/lib/employee/i18n";
+import type { ModuleMedia } from "@/lib/employee/module-media";
 import { loadEmployeeSession } from "@/lib/employee/session";
 import type { TrainingModule } from "@/types";
 import type { EquipmentSim } from "@/types/training";
@@ -19,6 +21,7 @@ export default function ModulePage() {
 
   const [mod, setMod] = React.useState<TrainingModule | null>(null);
   const [sim, setSim] = React.useState<EquipmentSim | null>(null);
+  const [media, setMedia] = React.useState<ModuleMedia | null>(null);
   const [nextModuleHref, setNextModuleHref] = React.useState<string | undefined>();
   const [loading, setLoading] = React.useState(true);
 
@@ -53,6 +56,13 @@ export default function ModulePage() {
         if (json.ok) setSim(json.data.sim as EquipmentSim);
       })
       .catch(() => setSim(null));
+
+    fetch(`/api/programs/${session.businessId}/modules/${moduleId}/media`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.ok) setMedia(json.data.media as ModuleMedia);
+      })
+      .catch(() => setMedia(null));
   }, [moduleId, router]);
 
   if (loading) {
@@ -74,12 +84,11 @@ export default function ModulePage() {
   }
 
   const session = loadEmployeeSession();
-  const ui = getEmployeeUi(session?.language);
   const content =
     mod.languageVariants?.[session?.language ?? ""] ?? mod.contentMarkdown;
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
+    <>
       <div className="space-y-6">
         <Link
           href="/learn"
@@ -89,12 +98,14 @@ export default function ModulePage() {
         </Link>
         <Card>
           <CardHeader>
-            <CardTitle>{mod.title}</CardTitle>
+            <CardTitle className="text-2xl tracking-tight">{mod.title}</CardTitle>
           </CardHeader>
-          <CardContent className="prose prose-neutral dark:prose-invert max-w-none">
-            <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-              {content}
-            </div>
+          <CardContent>
+            <ModuleContent
+              markdown={content}
+              media={media}
+              exportGuideMarkdown={sim?.exportGuide}
+            />
           </CardContent>
         </Card>
 
@@ -111,26 +122,7 @@ export default function ModulePage() {
         )}
       </div>
 
-      <aside className="space-y-3 lg:sticky lg:top-8 lg:self-start">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{ui.coachTitle}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-3 text-sm text-muted-foreground">
-              {ui.coachDescription}
-            </p>
-            {session && (
-              <Link
-                href={`/learn/coach?employeeId=${encodeURIComponent(session.user.id)}&module=${encodeURIComponent(mod.id)}&intent=practice-start`}
-                className="inline-flex h-10 items-center justify-center rounded-[var(--radius)] bg-brand px-4 text-sm font-medium text-brand-foreground transition hover:brightness-95"
-              >
-                {ui.rolePlayModule}
-              </Link>
-            )}
-          </CardContent>
-        </Card>
-      </aside>
-    </div>
+      {session && <CoachFloatingWidget moduleId={mod.id} />}
+    </>
   );
 }

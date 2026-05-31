@@ -238,3 +238,49 @@ body {
 .animate-fade-in {
   animation: fade-in 0.3s ease-out forwards;
 }
+
+/* Employee module reader — markdown without @tailwindcss/typography */
+.module-markdown {
+  @apply text-[0.9375rem] leading-relaxed text-foreground;
+}
+
+.module-markdown .module-md-h1 {
+  @apply mt-0 mb-4 text-2xl font-semibold tracking-tight text-foreground;
+}
+
+.module-markdown .module-md-h2 {
+  @apply mt-8 mb-3 text-lg font-semibold text-foreground border-b border-border pb-2;
+}
+
+.module-markdown .module-md-h3 {
+  @apply mt-6 mb-2 text-base font-semibold text-foreground;
+}
+
+.module-markdown .module-md-p {
+  @apply my-3 text-foreground/90;
+}
+
+.module-markdown .module-md-ul,
+.module-markdown .module-md-ol {
+  @apply my-3 ml-5 space-y-2;
+}
+
+.module-markdown .module-md-ul {
+  @apply list-disc;
+}
+
+.module-markdown .module-md-ol {
+  @apply list-decimal;
+}
+
+.module-markdown .module-md-li {
+  @apply pl-1;
+}
+
+.module-markdown .module-md-hr {
+  @apply my-8 border-0 border-t border-border;
+}
+
+.module-markdown .module-md-blockquote {
+  @apply my-4 border-l-4 border-brand pl-4 text-muted-foreground italic;
+}

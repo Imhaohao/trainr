@@ -34,6 +34,8 @@ type CoachChatProps = {
   autoStart?: { moduleId: string; focus?: string; moduleTitle?: string };
   suggestions?: CoachSuggestion[];
   className?: string;
+  variant?: "default" | "floating";
+  onClose?: () => void;
 };
 
 export function CoachChat({
@@ -44,6 +46,8 @@ export function CoachChat({
   autoStart,
   suggestions = [],
   className,
+  variant = "default",
+  onClose,
 }: CoachChatProps) {
   const session = loadEmployeeSession();
   const language = session?.language;
@@ -262,9 +266,11 @@ export function CoachChat({
         title={resolvedTitle}
         description={resolvedDescription}
         className={className}
+        variant={variant}
         messages={messages}
         onSend={handleSend}
         isTyping={isTyping}
+        onClose={onClose}
         onClear={() => {
           setMessages([]);
           updateEmployeeSession({ coachSessionId: undefined });

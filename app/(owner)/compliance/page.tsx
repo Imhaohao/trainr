@@ -1,21 +1,21 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui';
+import { requireOwnerPage } from '@/lib/auth';
+import { loadComplianceReport } from '@/lib/compliance/report';
+import { ComplianceDashboard } from '@/components/compliance/ComplianceDashboard';
+import { ComplianceEmptyState } from '@/components/compliance/ComplianceEmptyState';
 
-// Nav shell only — Track 4 replaces this page with the compliance dashboard.
-export default function CompliancePlaceholderPage() {
+export default async function CompliancePage() {
+  const { business } = await requireOwnerPage();
+
+  if (!business) {
+    return <ComplianceEmptyState />;
+  }
+
+  const report = await loadComplianceReport(business.id);
+  if (!report) {
+    return <ComplianceEmptyState />;
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Compliance</CardTitle>
-        <CardDescription>Coming soon — Track 4</CardDescription>
-      </CardHeader>
-      <CardContent className="text-sm text-muted">
-        This page will show applied laws, provenance, and compliance status after
-        the pipeline runs. Use the API stub{' '}
-        <code className="rounded bg-brand-soft px-1">
-          GET /api/compliance-report/:businessId
-        </code>{' '}
-        until then.
-      </CardContent>
-    </Card>
+    <ComplianceDashboard report={report} businessName={business.name} />
   );
 }
