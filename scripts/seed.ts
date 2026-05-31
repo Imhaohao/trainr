@@ -8,6 +8,7 @@
 import { getDb } from '../lib/contracts/db';
 import type { CrudRepo } from '../lib/contracts/db';
 import { demoFixture } from '../lib/mocks/fixtures';
+import { ensureDemoCredential } from '../lib/auth/local-store';
 
 async function upsert<T extends { id: string }>(
   repo: CrudRepo<T>,
@@ -39,6 +40,10 @@ async function main() {
   await upsert(db.compliance, [f.compliance]);
   await upsert(db.audit, f.audit);
   await upsert(db.chat, f.chat);
+
+  // Provision the demo owner's login credential (xiao@happylemon-demo.com /
+  // demo1234) so login works on the persistent backends, not just mock mode.
+  ensureDemoCredential();
 
   const businesses = await db.businesses.list();
   const programs = await db.programs.list();

@@ -10,9 +10,105 @@ detail: ...
 ```
 
 ## Open items
-- [ ] **Request Insforge credentials from user** — `INSFORGE_API_URL`, `INSFORGE_API_KEY`, `INSFORGE_PROJECT_ID`. Until then T1 ships on `LocalRepository`. (owner: T1)
+- (none)
 
 ## Log
+### [Phase 1] [T1] Google Sign-In (OAuth 2.0 Authorization Code flow)
+status: ready
+detail: "Continue with Google" on /login and /signup. Server-side code flow
+  (client secret never reaches the browser), new dep `google-auth-library`.
+    - `lib/auth/google.ts`: build consent URL, exchange code→tokens with the
+      secret, verify the id_token (signature/iss/aud/exp) via OAuth2Client.
+    - `GET /api/auth/google/start`: sets a 10-min httpOnly `trainr_oauth_state`
+      CSRF cookie, 307s to Google.
+    - `GET /api/auth/google/callback`: constant-time state check, code exchange,
+      then find-or-create owner by email (case-insensitive — links to an existing
+      email/password owner instead of duplicating), `setSession`, redirect to
+      /dashboard. Failures → /login?error=<code>.
+    - `components/auth/GoogleButton.tsx` (full-navigation link, not fetch).
+    - env: `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` in .env.local (placeholders
+      in env.local.example). Register redirect URI in Google console:
+      `<APP_BASE_URL>/api/auth/google/callback`.
+  Verified: auth URL params correct; /start → 307 to Google + state cookie;
+  bad-state callback → /login?error=google_state. tsc + build clean.
+  NOTE for all tracks: no contract changes — `User` is unchanged (Google users are
+  just owner Users with an email and no credential entry).
+
+### [Phase 1] [T1] Insforge backend live + verified — UNBLOCKED
+status: ready
+detail: Credentials landed and the `trainr_*` schema was provisioned in Insforge
+  (user ran `scripts/insforge-schema.sql`). Verified end-to-end against the live
+  backend via `getDb()` → `InsforgeRepository`:
+    - All 10 tables reachable (GET /api/database/records/trainr_* → 200).
+    - `npm run seed` wrote the full Happy Lemon fixture (1 business, 3 users,
+      8-module program, intake/files/compliance/audit/chat) through the adapter.
+    - Read-back confirms nested jsonb round-trips (businesses.roles/languages,
+      programs.modules) and `findBusinessByJoinCode` (HLEMON → 1 row).
+    - Full CRUD contract passes: create → get → update → findByJoinCode
+      (case-insensitive) → filtered list → delete.
+  `.env.local` flipped to `USE_MOCKS=false`, so the app now runs on Insforge.
+  The mock demo bypass (one-click owner page) only applies when USE_MOCKS=true;
+  on Insforge the demo logs in normally (xiao@happylemon-demo.com / demo1234 —
+  credential provisioned by `npm run seed` via ensureDemoCredential()).
+
+### [Phase 1] [T1] Security hardening + cross-track guard patches
+status: ready
+detail: Audit follow-ups. T1-owned fixes:
+  - env: real keys moved OUT of the tracked `env.local.example` (placeholders
+    only) into gitignored `.env.local`; added `SESSION_SECRET` (+ generated one
+    in .env.local). NOTE: the committed example never contained the key, so it's
+    not in git history — rotate anyway if it was shared elsewhere.
+  - Owner signup now REQUIRES a password (min 8 chars) — API (zod) + form.
+  - `POST /api/business` is now idempotent per owner: returns the existing
+    business instead of creating duplicates.
+  - Sign-out added to the owner nav (`components/owner/OwnerNav.tsx` →
+    `POST /api/auth/logout`).
+  - Demo login made robust on Local/Insforge: the demo credential is auto-seeded
+    only in mock mode; `scripts/seed.ts` now provisions it via
+    `ensureDemoCredential()` so login works after `npm run seed`.
+  - `getDb()` now requires BOTH `INSFORGE_API_URL` and `INSFORGE_API_KEY` before
+    selecting Insforge (avoids a runtime throw when only one is set).
+  - Added `scripts/insforge-schema.sql` (CREATE TABLE for all 10 `trainr_*`
+    tables, camelCase quoted columns, jsonb for nested fields) to unblock the
+    real backend.
+
+  ⚠️ CROSS-TRACK PATCHES (T2-owned routes): I added owner-only guards
+  (`ownedBusinessOr403`) to three T2 routes because T1's owner UI calls them and
+  they were unauthenticated (any client could hit any businessId):
+    - `PATCH /api/programs/:businessId/modules/:moduleId` (inline module editor)
+    - `POST  /api/pipeline/:businessId/run` (Generate trigger)
+    - `GET   /api/pipeline/:businessId/status` (dashboard poll)
+  UPDATE (rebase onto T2's pipeline work): T2 implemented the real run/status
+  bodies (orchestrator + checkpointed run-status). I kept their bodies and merged
+  the owner guard back in at the top of both routes, so the guard survives. The
+  module PATCH guard is unchanged.
+
+### [Phase 1] [T1] Auth + owner experience real (CP-1)
+status: ready
+detail: Owner flow is live end-to-end on the Local/mock backends (verified over HTTP):
+  - Auth: signed httpOnly-cookie sessions (`lib/auth/`), scrypt password hashing,
+    owner signup/login, employee join (no-password), logout. New routes:
+    `POST /api/auth/logout`, `GET /api/auth/me`.
+  - Guards: `requireOwnerPage` (server components → redirect /login),
+    `requireApiOwner` + `ownedBusinessOr403` (API). Verified: unauth create → 401,
+    cross-business intake → 403. Demo affordance: when USE_MOCKS==='true' and no
+    session, owner pages resolve the demo owner so the dashboard is one-click.
+  - Onboarding: full 6-step wizard (`components/owner/OnboardingWizard.tsx`) with
+    debounced autosave to `/api/business/:id` + `/intake` + `/files`, drag-drop
+    uploads, and a Generate trigger that calls `POST /api/pipeline/:id/run`.
+  - Dashboard: session-scoped business, copyable join code, generation status
+    poll (`GenerationPanel`), inline module review/edit (`ProgramReview` →
+    `PATCH /api/programs/:businessId/modules/:moduleId`), and employee roster.
+
+### [Phase 1] [T1] Data layer + getDb() selection
+status: ready
+detail: `lib/db/local-repository.ts` (LocalRepository, persistent JSON under
+  .data/db.json, zero external keys) and `lib/db/insforge-repository.ts`
+  (InsforgeRepository, PostgREST-style REST per docs.insforge.dev). Updated the
+  `getDb()` factory body in `lib/contracts/db.ts` (interface UNCHANGED — still
+  frozen): USE_MOCKS==='true' → mock; else INSFORGE_API_KEY → Insforge; else
+  Local. `npm run seed` validated against Local (8 modules, join code HLEMON).
+
 ### [Phase 1] [T2] Orchestrator + curriculum ready — pipeline runs end-to-end
 status: ready
 detail: `lib/agents/orchestrator.ts` — `runPipeline(businessId, {runId?})` runs research → curriculum → compliance → assemble → persist. Each stage **checkpoints to Tigris** (`${businessId}/program/v${n}/_checkpoint.json` with stage + partial results); on `run` it resumes from the last checkpoint instead of restarting (reuses already-computed research/curriculum/compliance). Writes a **run-status record** (`${businessId}/program/run-status.json`, exported `getRunStatus(businessId)`) and updates `Business.status` (researching → generating → ready). Final `TrainingProgram` persisted to DB (`getDb().programs.create`, upsert) **and** Tigris (`program.json` + per-module `.md`). New runs bump the version; mid-flight runs resume the in-progress version.
@@ -46,6 +142,13 @@ proposal+rationale: `ResearchProvider.research(input)` must persist artifacts to
 status: ready
 detail: `lib/integrations/tigris.ts` implements `StorageAdapter` (AWS SDK v3 → Tigris S3, `forcePathStyle: true`, region `auto`, bucket `TIGRIS_BUCKET`). Exports `getTigrisStorage()` (real singleton), `getStorage()` (mock-vs-real selection), and `tigrisKeys` helpers enforcing the `${businessId}/...` key layout. Falls back to `mock-storage` when AWS creds are absent or `USE_MOCKS==='true'`.
 contract-touch: `lib/contracts/storage.ts#getStorage` (frozen) now re-exports the selector from the integration — this is the T1-authored TODO hook, signature unchanged. No interface/type changes. `tsc --noEmit` clean.
+
+### [Phase 1] [T1] BLOCKED→RESOLVED: Insforge credentials
+status: done
+detail: InsforgeRepository was implemented but unexercised pending a provisioned
+  project (`INSFORGE_API_URL`, `INSFORGE_API_KEY`, tables in the public schema with
+  jsonb columns for nested fields). Credentials + schema have since landed — see the
+  "Insforge backend live + verified" entry above. (owner: T1)
 
 ### [Phase 0] [T1] Phase 0 ready — foundation merged to main
 status: done

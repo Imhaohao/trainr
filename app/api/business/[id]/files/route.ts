@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/contracts/db';
 import { getStorage } from '@/lib/contracts/storage';
 import { ok, fail } from '@/lib/http';
+import { ownedBusinessOr403 } from '@/lib/auth';
 import type { StoredFile, StoredFileKind } from '@/types';
 
 export async function POST(
@@ -13,6 +14,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: businessId } = await params;
+
+  const owned = await ownedBusinessOr403(businessId);
+  if (!owned) return fail('Forbidden.', 403);
 
   let form: FormData;
   try {

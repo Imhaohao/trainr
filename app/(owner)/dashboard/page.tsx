@@ -1,6 +1,6 @@
 import Link from 'next/link';
+import { requireOwnerPage } from '@/lib/auth';
 import { getDb } from '@/lib/contracts/db';
-import { IDS } from '@/lib/mocks/fixtures';
 import {
   Badge,
   Button,
@@ -10,25 +10,22 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui';
+import { JoinCodeCard } from '@/components/owner/JoinCodeCard';
+import { GenerationPanel } from '@/components/owner/GenerationPanel';
+import { ProgramReview } from '@/components/owner/ProgramReview';
+import type { EmployeeProgress, User } from '@/types';
 
-// Phase 0 scaffold: reads the active DB (mock/Local) directly server-side and
-// renders the demo business + program. Phase 1 wires the live generate trigger,
-// status poll, inline module editing, and the employee roster.
+// Owner dashboard: resolves the owner's business from the session, shows the
+// join code, generation status / program review, and the employee roster.
 export default async function DashboardPage() {
-  const db = getDb();
-  // Demo: default to the seeded business. Phase 1 resolves this from the session.
-  const business = await db.businesses.get(IDS.business);
-  const programs = business
-    ? await db.programs.list({ businessId: business.id })
-    : [];
-  const program = programs[0];
+  const { business } = await requireOwnerPage();
 
   if (!business) {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="text-muted">
-          No business yet.{' '}
+          You haven&apos;t set up a business yet.{' '}
           <Link href="/onboarding" className="text-accent underline">
             Start the intake
           </Link>
@@ -37,6 +34,15 @@ export default async function DashboardPage() {
       </div>
     );
   }
+
+  const db = getDb();
+  const programs = await db.programs.list({ businessId: business.id });
+  const program = programs.sort((a, b) => b.version - a.version)[0] ?? null;
+  const employees = (await db.users.list({ businessId: business.id })).filter(
+    (u) => u.role === 'employee',
+  );
+  const progress = await db.progress.list({ businessId: business.id });
+  const moduleCount = program?.modules.length ?? 0;
 
   return (
     <div className="space-y-6">
@@ -53,79 +59,80 @@ export default async function DashboardPage() {
         </Badge>
       </div>
 
-      {/* Join code */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Employee join code</CardTitle>
-          <CardDescription>
-            Share this with your team so they can sign in — no password needed.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-4">
-            <span className="rounded-[var(--radius)] bg-brand-soft px-5 py-3 text-2xl font-bold tracking-widest">
-              {business.joinCode}
-            </span>
-            <span className="text-sm text-muted">
-              Employees enter this at <code>/join</code>.
-            </span>
-          </div>
-        </CardContent>
-      </Card>
+      <JoinCodeCard joinCode={business.joinCode} />
 
-      {/* Program */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Training program</CardTitle>
-              <CardDescription>
-                {program
-                  ? `Version ${program.version} · ${program.modules.length} modules · ${program.status}`
-                  : 'Not generated yet.'}
-              </CardDescription>
-            </div>
-            <div className="flex gap-2">
-              <Link href="/compliance">
-                <Button variant="outline" size="sm">
-                  Compliance
-                </Button>
-              </Link>
-              <Link href="/deploy">
-                <Button size="sm">Publish</Button>
-              </Link>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {program ? (
-            <ul className="divide-y divide-border">
-              {program.modules
-                .slice()
-                .sort((a, b) => a.order - b.order)
-                .map((mod) => (
-                  <li
-                    key={mod.id}
-                    className="flex items-center justify-between py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-muted">{mod.order}.</span>
-                      <span className="font-medium">{mod.title}</span>
-                      <Badge tone="neutral">{mod.type}</Badge>
-                    </div>
-                    {mod.quiz && (
-                      <span className="text-xs text-muted">
-                        {mod.quiz.questions.length} quiz Q
-                      </span>
-                    )}
-                  </li>
-                ))}
-            </ul>
-          ) : (
-            <Button>Generate training program</Button>
-          )}
-        </CardContent>
-      </Card>
+      {program ? (
+        <ProgramReview businessId={business.id} program={program} />
+      ) : (
+        <GenerationPanel
+          businessId={business.id}
+          initialStatus={business.status}
+        />
+      )}
+
+      <EmployeeRoster
+        employees={employees}
+        progress={progress}
+        moduleCount={moduleCount}
+      />
     </div>
+  );
+}
+
+function EmployeeRoster({
+  employees,
+  progress,
+  moduleCount,
+}: {
+  employees: User[];
+  progress: EmployeeProgress[];
+  moduleCount: number;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Team</CardTitle>
+        <CardDescription>
+          {employees.length} employee{employees.length === 1 ? '' : 's'} joined.
+          Progress updates as they complete modules.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {employees.length === 0 ? (
+          <p className="text-sm text-muted">
+            No one has joined yet. Share your join code to get started.
+          </p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-muted">
+                <th className="pb-2 font-medium">Name</th>
+                <th className="pb-2 font-medium">Completed</th>
+                <th className="pb-2 font-medium">Certified</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {employees.map((emp) => {
+                const rows = progress.filter((p) => p.employeeId === emp.id);
+                const completed = rows.filter(
+                  (p) => p.status === 'completed',
+                ).length;
+                const certified = rows.filter((p) => p.certified).length;
+                return (
+                  <tr key={emp.id}>
+                    <td className="py-2 font-medium">{emp.name}</td>
+                    <td className="py-2 text-muted">
+                      {completed}
+                      {moduleCount ? ` / ${moduleCount}` : ''}
+                    </td>
+                    <td className="py-2 text-muted">{certified}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </CardContent>
+    </Card>
   );
 }

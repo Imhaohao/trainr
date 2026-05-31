@@ -2,7 +2,8 @@
 // Phase 0 (owner: T1). Upserts the intake profile (keyed by businessId).
 
 import { getDb } from '@/lib/contracts/db';
-import { ok, readJson } from '@/lib/http';
+import { ok, fail, readJson } from '@/lib/http';
+import { ownedBusinessOr403 } from '@/lib/auth';
 import type { IntakeProfile } from '@/types';
 
 export async function POST(
@@ -10,6 +11,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const owned = await ownedBusinessOr403(id);
+  if (!owned) return fail('Forbidden.', 403);
+
   const body = await readJson<Partial<IntakeProfile>>(req);
   const db = getDb();
 

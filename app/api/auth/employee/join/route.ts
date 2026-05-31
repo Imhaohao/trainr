@@ -1,29 +1,42 @@
 // POST /api/auth/employee/join { joinCode, name } -> { user, businessId }
-// Phase 0 stub (owner: T1). Resolves the business by join code against the
-// mock DB and creates a no-password employee user. Phase 1 (T1): set an
-// employee session cookie.
+// Resolves the business by join code and creates a no-password employee user,
+// then starts an employee session (low-friction onboarding by design).
 
+import { z } from 'zod';
 import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/contracts/db';
 import { ok, fail, readJson } from '@/lib/http';
+import { setSession } from '@/lib/auth';
 import type { User } from '@/types';
 
+const Body = z.object({
+  joinCode: z.string().trim().min(1),
+  name: z.string().trim().min(1),
+});
+
 export async function POST(req: Request) {
-  const body = await readJson<{ joinCode?: string; name?: string }>(req);
-  if (!body.joinCode) return fail('joinCode is required');
+  const parsed = Body.safeParse(await readJson(req));
+  if (!parsed.success) return fail('Enter your join code and name.');
+  const { joinCode, name } = parsed.data;
 
   const db = getDb();
-  const business = await db.findBusinessByJoinCode(body.joinCode);
-  if (!business) return fail('Invalid join code', 404);
+  const business = await db.findBusinessByJoinCode(joinCode);
+  if (!business) return fail('Invalid join code — check with your manager.', 404);
 
   const user: User = {
     id: `usr_${nanoid(10)}`,
     role: 'employee',
     businessId: business.id,
-    name: body.name ?? 'New Teammate',
+    name,
     createdAt: new Date().toISOString(),
   };
   await db.users.create(user);
+
+  await setSession({
+    userId: user.id,
+    role: 'employee',
+    businessId: business.id,
+  });
 
   return ok({ user, businessId: business.id });
 }
