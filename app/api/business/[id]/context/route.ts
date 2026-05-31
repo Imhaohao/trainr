@@ -2,7 +2,7 @@
 // Import direct context from a Google Doc link (public share required).
 
 import { getDb } from '@/lib/contracts/db';
-import { assertBusinessAccess, requireOwner } from '@/lib/auth/guards';
+import { ownedBusinessOr403 } from '@/lib/auth';
 import {
   appendContextSource,
   fetchGoogleDocText,
@@ -18,11 +18,9 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireOwner();
-  if (!auth.ok) return auth.response;
   const { id: businessId } = await params;
-  const denied = await assertBusinessAccess(auth.ctx, businessId);
-  if (denied) return denied;
+  const owned = await ownedBusinessOr403(businessId);
+  if (!owned) return fail('Unauthorized', 403);
 
   const body = await readJson<ContextBody>(req);
   const url = body.googleDocUrl?.trim();

@@ -10,7 +10,7 @@ detail: ...
 ```
 
 ## Open items
-- [ ] **Request Insforge credentials from user** — `INSFORGE_API_URL`, `INSFORGE_API_KEY`, `INSFORGE_PROJECT_ID`. `getInsforgeDb()` is a stub that delegates to `LocalRepository` until wired. (owner: T1)
+- (none)
 
 ## Log
 ### [2026-05-31] [T3] BLOCKED(mcp): Equipment sim adapter — fixture-backed boba station
@@ -20,14 +20,101 @@ detail: |
   **MCP swap:** when an equipment/operating-procedure MCP exists, replace fixture lookup with an MCP tool call returning the same `EquipmentSim` shape scoped by `business_id`, with `source.kind: "mcp"` and `source.ref` / `retrievedAt` from the server.
   Grading: `POST /api/sim/:businessId/grade` → `gradeSimRun()` + scenario-coach debrief (`lib/coach/llm.ts` / mock fallback). Module certification requires **both** quiz pass (if quiz) and sim pass (if `simId`) via `evaluateModuleCompletion()`.
 
-### [Phase 1] [T1] Owner data layer, auth, onboarding, dashboard — Track 1 DoD
+### [Phase 1] [T1] Google Sign-In (OAuth 2.0 Authorization Code flow)
 status: ready
-detail: |
-  **Local DB:** `lib/db/local-repository.ts` persists to `.data/trainr-db.json`. `getDb()` selects mock when `USE_MOCKS=true`, Insforge stub when `INSFORGE_API_KEY` set, else Local.
-  **Auth:** httpOnly `trainr_session` cookie; owner signup/login with scrypt passwords (Local); `GET /api/auth/me`; employee join sets session + client storage for T3.
-  **Owner routes (real):** `/api/auth/*`, `/api/business/*` (GET intake added), owner-guarded with `requireOwner()`.
-  **UI:** 6-step onboarding wizard (autosave intake, uploads, generate → pipeline); dashboard session-scoped with join-code copy, pipeline poll, inline module PATCH editor, live employee roster from DB.
-  **Demo:** `USE_MOCKS=false`, `npm run seed` → owner `xiao@happylemon-demo.com` / `demo123`, join code `HLEMON`. `tsc` + `npm run build` clean.
+detail: "Continue with Google" on /login and /signup. Server-side code flow
+  (client secret never reaches the browser), new dep `google-auth-library`.
+    - `lib/auth/google.ts`: build consent URL, exchange code→tokens with the
+      secret, verify the id_token (signature/iss/aud/exp) via OAuth2Client.
+    - `GET /api/auth/google/start`: sets a 10-min httpOnly `trainr_oauth_state`
+      CSRF cookie, 307s to Google.
+    - `GET /api/auth/google/callback`: constant-time state check, code exchange,
+      then find-or-create owner by email (case-insensitive — links to an existing
+      email/password owner instead of duplicating), `setSession`, redirect to
+      /dashboard. Failures → /login?error=<code>.
+    - `components/auth/GoogleButton.tsx` (full-navigation link, not fetch).
+    - env: `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` in .env.local (placeholders
+      in env.local.example). Register redirect URI in Google console:
+      `<APP_BASE_URL>/api/auth/google/callback`.
+  Verified: auth URL params correct; /start → 307 to Google + state cookie;
+  bad-state callback → /login?error=google_state. tsc + build clean.
+  NOTE for all tracks: no contract changes — `User` is unchanged (Google users are
+  just owner Users with an email and no credential entry).
+
+### [Phase 1] [T1] Insforge backend live + verified — UNBLOCKED
+status: ready
+detail: Credentials landed and the `trainr_*` schema was provisioned in Insforge
+  (user ran `scripts/insforge-schema.sql`). Verified end-to-end against the live
+  backend via `getDb()` → `InsforgeRepository`:
+    - All 10 tables reachable (GET /api/database/records/trainr_* → 200).
+    - `npm run seed` wrote the full Happy Lemon fixture (1 business, 3 users,
+      8-module program, intake/files/compliance/audit/chat) through the adapter.
+    - Read-back confirms nested jsonb round-trips (businesses.roles/languages,
+      programs.modules) and `findBusinessByJoinCode` (HLEMON → 1 row).
+    - Full CRUD contract passes: create → get → update → findByJoinCode
+      (case-insensitive) → filtered list → delete.
+  `.env.local` flipped to `USE_MOCKS=false`, so the app now runs on Insforge.
+  The mock demo bypass (one-click owner page) only applies when USE_MOCKS=true;
+  on Insforge the demo logs in normally (xiao@happylemon-demo.com / demo1234 —
+  credential provisioned by `npm run seed` via ensureDemoCredential()).
+
+### [Phase 1] [T1] Security hardening + cross-track guard patches
+status: ready
+detail: Audit follow-ups. T1-owned fixes:
+  - env: real keys moved OUT of the tracked `env.local.example` (placeholders
+    only) into gitignored `.env.local`; added `SESSION_SECRET` (+ generated one
+    in .env.local). NOTE: the committed example never contained the key, so it's
+    not in git history — rotate anyway if it was shared elsewhere.
+  - Owner signup now REQUIRES a password (min 8 chars) — API (zod) + form.
+  - `POST /api/business` is now idempotent per owner: returns the existing
+    business instead of creating duplicates.
+  - Sign-out added to the owner nav (`components/owner/OwnerNav.tsx` →
+    `POST /api/auth/logout`).
+  - Demo login made robust on Local/Insforge: the demo credential is auto-seeded
+    only in mock mode; `scripts/seed.ts` now provisions it via
+    `ensureDemoCredential()` so login works after `npm run seed`.
+  - `getDb()` now requires BOTH `INSFORGE_API_URL` and `INSFORGE_API_KEY` before
+    selecting Insforge (avoids a runtime throw when only one is set).
+  - Added `scripts/insforge-schema.sql` (CREATE TABLE for all 10 `trainr_*`
+    tables, camelCase quoted columns, jsonb for nested fields) to unblock the
+    real backend.
+
+  ⚠️ CROSS-TRACK PATCHES (T2-owned routes): I added owner-only guards
+  (`ownedBusinessOr403`) to three T2 routes because T1's owner UI calls them and
+  they were unauthenticated (any client could hit any businessId):
+    - `PATCH /api/programs/:businessId/modules/:moduleId` (inline module editor)
+    - `POST  /api/pipeline/:businessId/run` (Generate trigger)
+    - `GET   /api/pipeline/:businessId/status` (dashboard poll)
+  UPDATE (rebase onto T2's pipeline work): T2 implemented the real run/status
+  bodies (orchestrator + checkpointed run-status). I kept their bodies and merged
+  the owner guard back in at the top of both routes, so the guard survives. The
+  module PATCH guard is unchanged.
+
+### [Phase 1] [T1] Auth + owner experience real (CP-1)
+status: ready
+detail: Owner flow is live end-to-end on the Local/mock backends (verified over HTTP):
+  - Auth: signed httpOnly-cookie sessions (`lib/auth/`), scrypt password hashing,
+    owner signup/login, employee join (no-password), logout. New routes:
+    `POST /api/auth/logout`, `GET /api/auth/me`.
+  - Guards: `requireOwnerPage` (server components → redirect /login),
+    `requireApiOwner` + `ownedBusinessOr403` (API). Verified: unauth create → 401,
+    cross-business intake → 403. Demo affordance: when USE_MOCKS==='true' and no
+    session, owner pages resolve the demo owner so the dashboard is one-click.
+  - Onboarding: full 6-step wizard (`components/owner/OnboardingWizard.tsx`) with
+    debounced autosave to `/api/business/:id` + `/intake` + `/files`, drag-drop
+    uploads, and a Generate trigger that calls `POST /api/pipeline/:id/run`.
+  - Dashboard: session-scoped business, copyable join code, generation status
+    poll (`GenerationPanel`), inline module review/edit (`ProgramReview` →
+    `PATCH /api/programs/:businessId/modules/:moduleId`), and employee roster.
+
+### [Phase 1] [T1] Data layer + getDb() selection
+status: ready
+detail: `lib/db/local-repository.ts` (LocalRepository, persistent JSON under
+  .data/db.json, zero external keys) and `lib/db/insforge-repository.ts`
+  (InsforgeRepository, PostgREST-style REST per docs.insforge.dev). Updated the
+  `getDb()` factory body in `lib/contracts/db.ts` (interface UNCHANGED — still
+  frozen): USE_MOCKS==='true' → mock; else INSFORGE_API_KEY → Insforge; else
+  Local. `npm run seed` validated against Local (8 modules, join code HLEMON).
 
 ### [Phase 1] [T2] Orchestrator + curriculum ready — pipeline runs end-to-end
 status: ready
@@ -63,31 +150,22 @@ status: ready
 detail: `lib/integrations/tigris.ts` implements `StorageAdapter` (AWS SDK v3 → Tigris S3, `forcePathStyle: true`, region `auto`, bucket `TIGRIS_BUCKET`). Exports `getTigrisStorage()` (real singleton), `getStorage()` (mock-vs-real selection), and `tigrisKeys` helpers enforcing the `${businessId}/...` key layout. Falls back to `mock-storage` when AWS creds are absent or `USE_MOCKS==='true'`.
 contract-touch: `lib/contracts/storage.ts#getStorage` (frozen) now re-exports the selector from the integration — this is the T1-authored TODO hook, signature unchanged. No interface/type changes. `tsc --noEmit` clean.
 
-### [2026-05-31] [T1] Phase 0 ready — parallel tracks may branch
-status: ready
-detail: |
-  **Phase 0 is merged on `main`. T2, T3, T4: rebase on `main`, copy `env.local.example` → `.env.local`, set `USE_MOCKS=true`, run `npm run seed` if the mock DB looks empty.**
+### [Phase 1] [T1] BLOCKED→RESOLVED: Insforge credentials
+status: done
+detail: InsforgeRepository was implemented but unexercised pending a provisioned
+  project (`INSFORGE_API_URL`, `INSFORGE_API_KEY`, tables in the public schema with
+  jsonb columns for nested fields). Credentials + schema have since landed — see the
+  "Insforge backend live + verified" entry above. (owner: T1)
 
-  ### Frozen contract surface (do not reshape without proposal + 👍)
-  - **`types/index.ts`** — User, Business, BusinessRole, IntakeProfile, Recipe, StoredFile, ResearchArtifact, TrainingProgram, TrainingModule (+ optional `simId`), Quiz, QuizQuestion, OnboardingWeek, EmployeeProgress (+ `quizPassed`, `simScore`, `simPassed`), ComplianceSnapshot, AppliedLaw, AuditEvent, ChatMessage, ApiResponse
-  - **`types/training.ts`** — Equipment sim domain types (T3 additive; not frozen in Phase 0)
-  - **`lib/contracts/db.ts`** — CrudRepo, DbRepository, getDb()
-  - **`lib/contracts/storage.ts`** — StorageAdapter, getStorage()
-  - **`lib/contracts/research.ts`** — ResearchQuery, ResearchProvider, getResearch()
-  - **`lib/contracts/llm.ts`** — LlmMessage, GenerateOpts, LlmProvider, getLlm()
-  - **`lib/mocks/fixtures.ts`** — demoFixture, IDS, DEMO_JOIN_CODE (`HLEMON`), Happy Lemon demo data
-
-  ### Stub ownership (replace bodies in files you own; keep route paths + envelope shape)
-  | Route prefix | Owner | Phase 0 behavior |
-  |--------------|-------|------------------|
-  | `/api/auth/*`, `/api/business/*` | T1 | CRUD against in-memory mock DB (Phase 1 adds session + Local/Insforge) |
-  | `/api/pipeline/*`, `/api/programs/*` | T2 | Stub: flips business status / reads fixture program; PATCH module persists to mock |
-  | `/api/coach/*`, `/api/quiz/*`, `/api/progress/*` | T3 | Stub: mock LLM stream, MC quiz grading, progress list |
-  | `/api/deploy/*`, `/api/audit/*`, `/api/compliance-report/*`, `/api/i18n/*` | T4 | Stub: publish bump + audit row, compliance snapshot read, translate noop |
-
-  ### Demo fixture quick reference
-  - Business id: `biz_happylemon` · join code: `HLEMON`
-  - Owner: `usr_owner_xiao` · employees: `usr_emp_maria`, `usr_emp_kevin`
-  - Program: `prog_happylemon_v1` (8 modules, quizzes, 4-week schedule)
-
-  Owner UI placeholders at `/compliance` and `/deploy` are T1 nav shells only — T4 replaces page content.
+### [Phase 0] [T1] Phase 0 ready — foundation merged to main
+status: done
+detail: Foundation complete and merged. Other tracks may now branch `track/<n>-<slug>` off `main`.
+contract surface (FROZEN — change via proposal in this log):
+- `types/index.ts` — all PLAN §4 entities (User, Business, BusinessRole, IntakeProfile, Recipe, StoredFile, ResearchArtifact, TrainingProgram, TrainingModule, Quiz, QuizQuestion, OnboardingWeek, EmployeeProgress, ComplianceSnapshot, AppliedLaw, AuditEvent, ChatMessage) + `ApiResponse<T>` envelope.
+- `lib/contracts/` — `db.ts` (`DbRepository`/`CrudRepo<T>` + `getDb()`), `storage.ts` (`StorageAdapter` + `getStorage()`), `research.ts` (`ResearchProvider` + `ResearchQuery`), `llm.ts` (`LlmProvider`/`GenerateOpts` + `getLlm()`).
+- `lib/mocks/` — rich Happy Lemon fixture (business, owner + 2 employees, intake w/ 3 recipes, 8-module program w/ quizzes, 4-week schedule, compliance snapshot, research artifacts, files, audit, chat) + in-memory `mock-db`, `mock-storage`, `mock-research`, `mock-llm`.
+- Factories: `getDb()` / `getLlm()` / `getStorage()` return mock when `USE_MOCKS==='true'` or the relevant key is missing.
+- App shell + theme, `components/ui/*` primitives (Button/Card/Input/Textarea/Select/Badge/Progress/Tabs/Spinner), owner nav (with /compliance + /deploy links pre-seeded for T4).
+- Every PLAN §5 route stubbed and returning `{ok,data}` mock data via the adapters; ownership comments mark which track takes over each stub.
+- `env.local.example`, `scripts/seed.ts`.
+verified: `npx tsc --noEmit` clean; no lint errors in source.

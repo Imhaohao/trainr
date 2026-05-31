@@ -7,8 +7,8 @@
  */
 import { getDb } from '../lib/contracts/db';
 import type { CrudRepo } from '../lib/contracts/db';
-import { createOwnerCredential } from '../lib/auth/credentials';
-import { demoFixture, demoOwner } from '../lib/mocks/fixtures';
+import { demoFixture } from '../lib/mocks/fixtures';
+import { ensureDemoCredential } from '../lib/auth/local-store';
 
 async function upsert<T extends { id: string }>(
   repo: CrudRepo<T>,
@@ -41,15 +41,12 @@ async function main() {
   await upsert(db.audit, f.audit);
   await upsert(db.chat, f.chat);
 
+  // Provision the demo owner's login credential (xiao@happylemon-demo.com /
+  // demo1234) so login works on the persistent backends, not just mock mode.
+  ensureDemoCredential();
+
   const businesses = await db.businesses.list();
   const programs = await db.programs.list();
-  if (process.env.USE_MOCKS !== 'true' && demoOwner.email) {
-    await createOwnerCredential(demoOwner.id, demoOwner.email, 'demo123');
-    console.log(
-      `Demo owner login: ${demoOwner.email} / demo123 (join code ${f.business.joinCode})`,
-    );
-  }
-
   console.log(
     `Seeded: ${businesses.length} business(es), ${f.users.length} users, ` +
       `${programs[0]?.modules.length ?? 0} modules, join code ${f.business.joinCode}.`,

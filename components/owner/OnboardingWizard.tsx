@@ -1,9 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { nanoid } from 'nanoid';
 import {
   Badge,
   Button,
@@ -14,627 +12,867 @@ import {
   CardTitle,
   Input,
   Label,
+  Progress,
   Select,
+  Spinner,
   Textarea,
+  cn,
 } from '@/components/ui';
-import type { Business, BusinessRole, IntakeProfile, Recipe, User } from '@/types';
-import { DirectContextImport } from '@/components/owner/DirectContextImport';
+import type {
+  Business,
+  BusinessRole,
+  IntakeProfile,
+  LanguageCode,
+  Recipe,
+  StoredFile,
+} from '@/types';
 
 const STEPS = [
-  'Business basics',
-  'Roles',
-  'Operations',
-  'Recipes',
-  'Your materials',
-  'Review & generate',
+  ['Business basics', 'Name, industry, address, size, languages, mission.'],
+  ['Roles', 'Add roles and mark which are customer-facing.'],
+  ['Operations', 'Opening/closing, cleaning, machines, drink production.'],
+  ['Recipes', 'Name, ingredients, steps — or upload instead.'],
+  ['Uploads', 'Drag in docs and menu images.'],
+  ['Review & Generate', 'Kick off the training pipeline.'],
 ] as const;
 
-const US_STATES = [
-  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA',
-  'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME', 'MD',
-  'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ',
-  'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC',
-  'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
+const INDUSTRIES = [
+  'Food & Beverage (Bubble Tea / Cafe)',
+  'Restaurant / QSR',
+  'Retail',
+  'Salon / Personal Care',
+  'Grocery / Convenience',
+  'Hospitality',
+  'Other',
 ];
 
-const LANGUAGE_OPTIONS = [
+const LANGUAGES: { code: LanguageCode; label: string }[] = [
   { code: 'en', label: 'English' },
-  { code: 'zh-Hans', label: 'Chinese (Simplified)' },
-  { code: 'zh-Hant', label: 'Chinese (Traditional)' },
-  { code: 'es', label: 'Spanish' },
-  { code: 'vi', label: 'Vietnamese' },
-] as const;
+  { code: 'zh-Hans', label: '简体中文' },
+  { code: 'zh-Hant', label: '繁體中文' },
+  { code: 'es', label: 'Español' },
+  { code: 'vi', label: 'Tiếng Việt' },
+];
 
-function emptyRecipe(): Recipe {
-  return { name: '', ingredients: [''], steps: [''] };
+const US_STATES = [
+  'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ',
+  'NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT',
+  'VA','WA','WV','WI','WY',
+];
+
+type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+
+interface Basics {
+  name: string;
+  industry: string;
+  address: string;
+  state: string;
+  employeeCount: number;
+  demographics: string;
+  languages: LanguageCode[];
+  mission: string;
 }
 
-export function OnboardingWizard() {
+interface Ops {
+  openingClosing: string;
+  cleaning: string;
+  machineOperations: string;
+  drinkProduction: string;
+  notes: string;
+}
+
+async function api<T = unknown>(
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<T> {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { 'content-type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error || 'Request failed');
+  return json.data as T;
+}
+
+function textToList(value: string): string[] {
+  return value
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export default function OnboardingWizard({
+  initialBusiness,
+  initialIntake,
+  initialFiles,
+}: {
+  initialBusiness: Business | null;
+  initialIntake: IntakeProfile | null;
+  initialFiles: StoredFile[];
+}) {
   const router = useRouter();
   const [step, setStep] = React.useState(0);
-  const [user, setUser] = React.useState<User | null>(null);
-  const [business, setBusiness] = React.useState<Business | null>(null);
-  const [intake, setIntake] = React.useState<IntakeProfile | null>(null);
-  const [roles, setRoles] = React.useState<BusinessRole[]>([]);
-  const [recipes, setRecipes] = React.useState<Recipe[]>([emptyRecipe()]);
-  const [uploadedFiles, setUploadedFiles] = React.useState<
-    { id: string; filename: string; kind: string }[]
-  >([]);
-  const [languages, setLanguages] = React.useState<string[]>(['en']);
-  const [generating, setGenerating] = React.useState(false);
+  const [businessId, setBusinessId] = React.useState<string | null>(
+    initialBusiness?.id ?? null,
+  );
+  const [joinCode, setJoinCode] = React.useState<string | null>(
+    initialBusiness?.joinCode ?? null,
+  );
+  const [saveState, setSaveState] = React.useState<SaveState>('idle');
   const [error, setError] = React.useState<string | null>(null);
-  const [saving, setSaving] = React.useState(false);
+  const [generating, setGenerating] = React.useState(false);
 
-  const businessId = business?.id;
+  const [basics, setBasics] = React.useState<Basics>({
+    name: initialBusiness?.name ?? '',
+    industry: initialBusiness?.industry ?? INDUSTRIES[0],
+    address: initialBusiness?.address ?? '',
+    state: initialBusiness?.state ?? 'CA',
+    employeeCount: initialBusiness?.employeeCount ?? 0,
+    demographics: initialBusiness?.demographics ?? '',
+    languages: initialBusiness?.languages ?? ['en'],
+    mission: initialBusiness?.mission ?? '',
+  });
+  const [roles, setRoles] = React.useState<BusinessRole[]>(
+    initialBusiness?.roles ?? [],
+  );
+  const [ops, setOps] = React.useState<Ops>({
+    openingClosing: initialIntake?.openingClosing ?? '',
+    cleaning: initialIntake?.cleaning ?? '',
+    machineOperations: initialIntake?.machineOperations ?? '',
+    drinkProduction: initialIntake?.drinkProduction ?? '',
+    notes: initialIntake?.notes ?? '',
+  });
+  const [recipes, setRecipes] = React.useState<Recipe[]>(
+    initialIntake?.recipes ?? [],
+  );
+  const [files, setFiles] = React.useState<StoredFile[]>(initialFiles);
 
-  React.useEffect(() => {
-    void (async () => {
-      const me = await fetch('/api/auth/me');
-      const json = await me.json();
-      if (!json.ok) {
-        router.replace('/login');
-        return;
-      }
-      setUser(json.data.user);
-      if (json.data.user.businessId) {
-        const bRes = await fetch(`/api/business/${json.data.user.businessId}`);
-        const bJson = await bRes.json();
-        if (bJson.ok) {
-          setBusiness(bJson.data.business);
-          setRoles(bJson.data.business.roles ?? []);
-          setLanguages(bJson.data.business.languages ?? ['en']);
-        }
-        const iRes = await fetch(
-          `/api/business/${json.data.user.businessId}/intake`,
-        );
-        if (iRes.ok) {
-          const iJson = await iRes.json();
-          if (iJson.ok && iJson.data.intake) {
-            setIntake(iJson.data.intake);
-            if (iJson.data.intake.recipes?.length) {
-              setRecipes(iJson.data.intake.recipes);
-            }
-          }
-        }
-      }
-    })();
-  }, [router]);
+  const dirty = React.useRef(false);
+  const markDirty = () => {
+    dirty.current = true;
+  };
 
-  async function ensureBusiness(): Promise<Business | null> {
-    if (business) return business;
-    const res = await fetch('/api/business', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name: 'My business',
-        industry: 'food_service',
-        address: '',
-        state: 'CA',
-        employeeCount: 1,
-        languages: ['en'],
-        roles: [],
-        ownerId: user?.id,
-      }),
-    });
-    const json = await res.json();
-    if (!json.ok) {
-      setError(json.error ?? 'Could not create business');
-      return null;
-    }
-    setBusiness(json.data.business);
-    return json.data.business as Business;
-  }
+  // Creates the business on first save if it doesn't exist yet.
+  const ensureBusiness = React.useCallback(async (): Promise<string> => {
+    if (businessId) return businessId;
+    const { business } = await api<{ business: Business }>(
+      '/api/business',
+      'POST',
+      {
+        name: basics.name || 'Untitled Business',
+        industry: basics.industry,
+        address: basics.address,
+        state: basics.state,
+        employeeCount: basics.employeeCount,
+        demographics: basics.demographics || undefined,
+        languages: basics.languages,
+        mission: basics.mission || undefined,
+        roles,
+      },
+    );
+    setBusinessId(business.id);
+    setJoinCode(business.joinCode);
+    return business.id;
+  }, [businessId, basics, roles]);
 
-  async function autosaveIntake(patch: Partial<IntakeProfile>) {
-    const biz = business ?? (await ensureBusiness());
-    if (!biz) return;
-    setSaving(true);
-    const res = await fetch(`/api/business/${biz.id}/intake`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        ...intake,
-        businessId: biz.id,
-        recipes,
-        ...patch,
-      }),
-    });
-    const json = await res.json();
-    setSaving(false);
-    if (json.ok) setIntake(json.data.intake);
-  }
-
-  async function saveBusinessBasics(form: FormData) {
-    const biz = await ensureBusiness();
-    if (!biz) return;
-    const langs = languages.length ? languages : ['en'];
-    const res = await fetch(`/api/business/${biz.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        name: String(form.get('name') ?? biz.name),
-        industry: String(form.get('industry') ?? biz.industry),
-        address: String(form.get('address') ?? ''),
-        website: String(form.get('website') ?? '') || undefined,
-        phone: String(form.get('phone') ?? '') || undefined,
-        state: String(form.get('state') ?? 'CA'),
-        employeeCount: Number(form.get('employeeCount') ?? 1),
-        demographics: String(form.get('demographics') ?? '') || undefined,
-        languages: langs,
-        mission: String(form.get('mission') ?? '') || undefined,
-      }),
-    });
-    const json = await res.json();
-    if (json.ok) setBusiness(json.data.business);
-    else setError(json.error);
-  }
-
-  async function saveRoles() {
-    const biz = await ensureBusiness();
-    if (!biz) return;
-    const res = await fetch(`/api/business/${biz.id}`, {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ roles }),
-    });
-    const json = await res.json();
-    if (json.ok) setBusiness(json.data.business);
-  }
-
-  async function nextStep() {
+  const saveAll = React.useCallback(async () => {
+    setSaveState('saving');
     setError(null);
-    if (step === 1) await saveRoles();
-    if (step === 2) {
-      await autosaveIntake({
-        openingClosing: intake?.openingClosing,
-        cleaning: intake?.cleaning,
-        machineOperations: intake?.machineOperations,
-        drinkProduction: intake?.drinkProduction,
-        notes: intake?.notes,
+    try {
+      const id = await ensureBusiness();
+      await api(`/api/business/${id}`, 'PATCH', {
+        name: basics.name || 'Untitled Business',
+        industry: basics.industry,
+        address: basics.address,
+        state: basics.state,
+        employeeCount: Number(basics.employeeCount) || 0,
+        demographics: basics.demographics || undefined,
+        languages: basics.languages,
+        mission: basics.mission || undefined,
+        roles,
       });
+      await api(`/api/business/${id}/intake`, 'POST', {
+        openingClosing: ops.openingClosing || undefined,
+        cleaning: ops.cleaning || undefined,
+        machineOperations: ops.machineOperations || undefined,
+        drinkProduction: ops.drinkProduction || undefined,
+        notes: ops.notes || undefined,
+        recipes,
+        uploadedFileIds: files
+          .filter((f) => f.kind !== 'menu_image')
+          .map((f) => f.id),
+        menuImageIds: files
+          .filter((f) => f.kind === 'menu_image')
+          .map((f) => f.id),
+      });
+      setSaveState('saved');
+      dirty.current = false;
+    } catch (e) {
+      setSaveState('error');
+      setError(e instanceof Error ? e.message : 'Autosave failed');
     }
-    if (step === 3) await autosaveIntake({ recipes });
-    setStep((s) => Math.min(s + 1, STEPS.length - 1));
-  }
+  }, [ensureBusiness, basics, roles, ops, recipes, files]);
 
-  async function onUpload(files: FileList | null, kind: 'upload' | 'menu_image') {
-    const biz = business ?? (await ensureBusiness());
-    if (!biz || !files?.length) return;
-    for (const file of Array.from(files)) {
-      const fd = new FormData();
-      fd.set('file', file);
-      fd.set('kind', kind);
-      const res = await fetch(`/api/business/${biz.id}/files`, {
-        method: 'POST',
-        body: fd,
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setUploadedFiles((prev) => [
-          ...prev,
-          {
-            id: json.data.file.id,
-            filename: json.data.file.filename,
-            kind: json.data.file.kind,
-          },
-        ]);
+  // Debounced autosave after edits (only once the user has touched something).
+  React.useEffect(() => {
+    if (!dirty.current) return;
+    const t = setTimeout(() => {
+      void saveAll();
+    }, 900);
+    return () => clearTimeout(t);
+  }, [basics, roles, ops, recipes, saveAll]);
+
+  async function onUpload(fileList: FileList | null, kind: StoredFile['kind']) {
+    if (!fileList || fileList.length === 0) return;
+    setError(null);
+    try {
+      const id = await ensureBusiness();
+      for (const file of Array.from(fileList)) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('kind', kind);
+        const res = await fetch(`/api/business/${id}/files`, {
+          method: 'POST',
+          body: fd,
+        });
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'Upload failed');
+        setFiles((prev) => [...prev, json.data.file as StoredFile]);
       }
+      markDirty();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Upload failed');
     }
   }
 
-  async function runGenerate() {
-    const biz = business ?? (await ensureBusiness());
-    if (!biz) return;
+  async function next() {
+    await saveAll();
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  }
+  function back() {
+    setStep((s) => Math.max(0, s - 1));
+  }
+
+  async function onGenerate() {
     setGenerating(true);
     setError(null);
-    await autosaveIntake({ recipes });
-    const res = await fetch(`/api/pipeline/${biz.id}/run`, { method: 'POST' });
-    const json = await res.json();
-    setGenerating(false);
-    if (!json.ok) {
-      setError(json.error ?? 'Could not start generation');
-      return;
+    try {
+      const id = await ensureBusiness();
+      await saveAll();
+      await api(`/api/pipeline/${id}/run`, 'POST', {});
+      router.push('/dashboard');
+    } catch (e) {
+      setGenerating(false);
+      setError(e instanceof Error ? e.message : 'Could not start generation');
     }
-    router.push('/dashboard');
-  }
-
-  if (!user) {
-    return <p className="text-muted-foreground text-sm">Loading…</p>;
   }
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Set up your training program</h1>
-        <p className="text-muted-foreground">
-          Dump everything you know — Trainr structures it. Each step autosaves
-          {saving ? ' (saving…)' : ''}.
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Set up your training program</h1>
+          <p className="text-muted">
+            Dump everything you know — Trainr does the structuring. Every step
+            autosaves.
+          </p>
+        </div>
+        <SaveIndicator state={saveState} />
+      </div>
+
+      <Progress
+        value={((step + 1) / STEPS.length) * 100}
+        label={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step][0]}`}
+      />
+
+      {joinCode && (
+        <p className="text-sm text-muted">
+          Your join code:{' '}
+          <span className="font-bold tracking-widest text-foreground">
+            {joinCode}
+          </span>
         </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {STEPS.map((label, i) => (
-          <Badge key={label} tone={i === step ? 'brand' : 'neutral'}>
-            {i + 1}. {label}
-          </Badge>
-        ))}
-      </div>
-
-      {error && <p className="text-sm text-destructive">{error}</p>}
-
-      {step === 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Business basics</CardTitle>
-            <CardDescription>
-              Name, address, and website — we research your business and nearby
-              competitors automatically. Only name is required.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form
-              className="space-y-4"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                await saveBusinessBasics(new FormData(e.currentTarget));
-                await nextStep();
-              }}
-            >
-              <div>
-                <Label htmlFor="name">Business name</Label>
-                <Input id="name" name="name" defaultValue={business?.name} required />
-              </div>
-              <div>
-                <Label htmlFor="industry">Industry</Label>
-                <Select id="industry" name="industry" defaultValue={business?.industry ?? 'food_service'}>
-                  <option value="food_service">Food & beverage</option>
-                  <option value="retail">Retail</option>
-                  <option value="healthcare">Healthcare</option>
-                  <option value="other">Other</option>
-                </Select>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="address">Street address</Label>
-                  <Input
-                    id="address"
-                    name="address"
-                    placeholder="123 Main St, City"
-                    defaultValue={business?.address}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="state">State</Label>
-                  <Select id="state" name="state" defaultValue={business?.state ?? 'CA'}>
-                    {US_STATES.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <Label htmlFor="website">Website (optional)</Label>
-                  <Input
-                    id="website"
-                    name="website"
-                    type="url"
-                    placeholder="https://yourbusiness.com"
-                    defaultValue={business?.website}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="phone">Phone (optional)</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    type="tel"
-                    placeholder="(555) 123-4567"
-                    defaultValue={business?.phone}
-                  />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="employeeCount">Number of employees</Label>
-                <Input
-                  id="employeeCount"
-                  name="employeeCount"
-                  type="number"
-                  min={1}
-                  defaultValue={business?.employeeCount ?? 5}
-                />
-              </div>
-              <div>
-                <Label>Languages spoken on the floor</Label>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  {LANGUAGE_OPTIONS.map((lang) => (
-                    <label key={lang.code} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={languages.includes(lang.code)}
-                        onChange={(e) => {
-                          setLanguages((prev) =>
-                            e.target.checked
-                              ? [...prev, lang.code]
-                              : prev.filter((c) => c !== lang.code),
-                          );
-                        }}
-                      />
-                      {lang.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="demographics">Team demographics (optional)</Label>
-                <Textarea id="demographics" name="demographics" rows={2} defaultValue={business?.demographics} />
-              </div>
-              <div>
-                <Label htmlFor="mission">Mission (optional)</Label>
-                <Textarea id="mission" name="mission" rows={2} defaultValue={business?.mission} />
-              </div>
-              <div className="flex justify-between">
-                <Button type="button" variant="outline" onClick={() => void nextStep()}>
-                  Skip for now
-                </Button>
-                <Button type="submit">Save & continue</Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
       )}
 
-      {step === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Roles</CardTitle>
-            <CardDescription>Who works the floor? Mark customer-facing roles.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {roles.map((role, idx) => (
-              <div key={role.id} className="flex flex-wrap items-end gap-3 rounded-lg border p-3">
-                <div className="min-w-[12rem] flex-1">
-                  <Label>Title</Label>
-                  <Input
-                    value={role.title}
-                    onChange={(e) => {
-                      const next = [...roles];
-                      next[idx] = { ...role, title: e.target.value };
-                      setRoles(next);
-                    }}
-                  />
-                </div>
-                <label className="flex items-center gap-2 pb-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={role.customerFacing}
-                    onChange={(e) => {
-                      const next = [...roles];
-                      next[idx] = { ...role, customerFacing: e.target.checked };
-                      setRoles(next);
-                    }}
-                  />
-                  Customer-facing
-                </label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRoles(roles.filter((_, i) => i !== idx))}
+      <div className="grid gap-6 md:grid-cols-[200px_1fr]">
+        {/* Step rail */}
+        <ol className="hidden flex-col gap-1 md:flex">
+          {STEPS.map(([title], i) => (
+            <li key={title}>
+              <button
+                type="button"
+                onClick={() => setStep(i)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-[var(--radius)] px-3 py-2 text-left text-sm transition',
+                  i === step
+                    ? 'bg-brand-soft font-medium text-brand-foreground'
+                    : 'text-muted hover:bg-brand-soft hover:text-foreground',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs',
+                    i < step
+                      ? 'bg-success text-white'
+                      : i === step
+                        ? 'bg-brand text-brand-foreground'
+                        : 'bg-stone-200 text-stone-600',
+                  )}
                 >
-                  Remove
-                </Button>
-              </div>
-            ))}
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() =>
-                setRoles([
-                  ...roles,
-                  { id: `role_${nanoid(6)}`, title: '', customerFacing: true },
-                ])
-              }
-            >
-              Add role
-            </Button>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(0)}>Back</Button>
-              <Button type="button" onClick={() => void nextStep()}>Save & continue</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  {i < step ? '✓' : i + 1}
+                </span>
+                {title}
+              </button>
+            </li>
+          ))}
+        </ol>
 
-      {step === 2 && (
+        {/* Step content */}
         <Card>
           <CardHeader>
-            <CardTitle>Operations</CardTitle>
-            <CardDescription>Paste SOPs, opening checklists, anything messy.</CardDescription>
+            <CardTitle>{STEPS[step][0]}</CardTitle>
+            <CardDescription>{STEPS[step][1]}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {(
-              [
-                ['openingClosing', 'Opening & closing'],
-                ['cleaning', 'Cleaning & sanitation'],
-                ['machineOperations', 'Machines & equipment'],
-                ['drinkProduction', 'Drink production'],
-                ['notes', 'Anything else'],
-              ] as const
-            ).map(([key, label]) => (
-              <div key={key}>
-                <Label>{label}</Label>
-                <Textarea
-                  rows={4}
-                  className="mt-1"
-                  value={(intake?.[key] as string | undefined) ?? ''}
-                  onChange={(e) => {
-                    setIntake((prev) => ({
-                      businessId: businessId ?? '',
-                      uploadedFileIds: prev?.uploadedFileIds ?? [],
-                      menuImageIds: prev?.menuImageIds ?? [],
-                      ...prev,
-                      [key]: e.target.value,
-                    }));
-                  }}
-                  onBlur={() => void autosaveIntake({ [key]: intake?.[key] })}
-                />
-              </div>
-            ))}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(1)}>Back</Button>
-              <Button type="button" onClick={() => void nextStep()}>Save & continue</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {step === 3 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Recipes</CardTitle>
-            <CardDescription>Top drinks or prep steps — one block per recipe.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {recipes.map((recipe, rIdx) => (
-              <div key={rIdx} className="space-y-2 rounded-lg border p-3">
-                <Label>Recipe name</Label>
-                <Input
-                  value={recipe.name}
-                  onChange={(e) => {
-                    const next = [...recipes];
-                    next[rIdx] = { ...recipe, name: e.target.value };
-                    setRecipes(next);
-                  }}
-                />
-                <Label>Ingredients (one per line)</Label>
-                <Textarea
-                  rows={3}
-                  value={recipe.ingredients.join('\n')}
-                  onChange={(e) => {
-                    const next = [...recipes];
-                    next[rIdx] = {
-                      ...recipe,
-                      ingredients: e.target.value.split('\n').filter(Boolean),
-                    };
-                    setRecipes(next);
-                  }}
-                />
-                <Label>Steps (one per line)</Label>
-                <Textarea
-                  rows={3}
-                  value={recipe.steps.join('\n')}
-                  onChange={(e) => {
-                    const next = [...recipes];
-                    next[rIdx] = {
-                      ...recipe,
-                      steps: e.target.value.split('\n').filter(Boolean),
-                    };
-                    setRecipes(next);
-                  }}
-                />
-              </div>
-            ))}
-            <Button type="button" variant="outline" onClick={() => setRecipes([...recipes, emptyRecipe()])}>
-              Add recipe
-            </Button>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(2)}>Back</Button>
-              <Button type="button" onClick={() => void nextStep()}>Save & continue</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {step === 4 && businessId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Your materials</CardTitle>
-            <CardDescription>
-              PDF handbooks and Google Docs — or skip and let us research from
-              your address and website.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <DirectContextImport
-              businessId={businessId}
-              initialSources={intake?.contextSources}
-              onImported={() => {
-                void fetch(`/api/business/${businessId}/intake`)
-                  .then((r) => r.json())
-                  .then((json) => {
-                    if (json.ok) setIntake(json.data.intake);
-                  });
-              }}
-            />
-            <div>
-              <Label>Menu images (optional)</Label>
-              <Input
-                type="file"
-                accept="image/*"
-                multiple
-                className="mt-1"
-                onChange={(e) => void onUpload(e.target.files, 'menu_image')}
+            {step === 0 && (
+              <BasicsStep
+                basics={basics}
+                onChange={(patch) => {
+                  markDirty();
+                  setBasics((b) => ({ ...b, ...patch }));
+                }}
               />
-            </div>
-            {uploadedFiles.filter((f) => f.kind === 'menu_image').length > 0 && (
-              <ul className="text-sm text-muted-foreground">
-                {uploadedFiles
-                  .filter((f) => f.kind === 'menu_image')
-                  .map((f) => (
-                    <li key={f.id}>✓ {f.filename}</li>
-                  ))}
-              </ul>
             )}
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(3)}>Back</Button>
-              <Button type="button" onClick={() => void nextStep()}>Continue</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            {step === 1 && (
+              <RolesStep
+                roles={roles}
+                onChange={(next) => {
+                  markDirty();
+                  setRoles(next);
+                }}
+              />
+            )}
+            {step === 2 && (
+              <OpsStep
+                ops={ops}
+                onChange={(patch) => {
+                  markDirty();
+                  setOps((o) => ({ ...o, ...patch }));
+                }}
+              />
+            )}
+            {step === 3 && (
+              <RecipesStep
+                recipes={recipes}
+                onChange={(next) => {
+                  markDirty();
+                  setRecipes(next);
+                }}
+              />
+            )}
+            {step === 4 && (
+              <UploadsStep files={files} onUpload={onUpload} />
+            )}
+            {step === 5 && (
+              <ReviewStep
+                basics={basics}
+                roles={roles}
+                recipes={recipes}
+                files={files}
+              />
+            )}
 
-      {step === 4 && !businessId && (
-        <Card>
-          <CardContent className="py-8 text-sm text-muted-foreground">
-            Save business basics first to upload materials.
+            {error && <p className="text-sm text-danger">{error}</p>}
           </CardContent>
         </Card>
-      )}
+      </div>
 
-      {step === 5 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Review & generate</CardTitle>
-            <CardDescription>
-              {business?.name ?? 'Your business'} · join code{' '}
-              <span className="font-mono font-bold">{business?.joinCode ?? '…'}</span>{' '}
-              after basics are saved.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              {roles.length} roles · {recipes.filter((r) => r.name).length} recipes ·{' '}
-              {(intake?.contextSources?.length ?? 0) +
-                uploadedFiles.filter((f) => f.kind === 'menu_image').length}{' '}
-              materials
-            </p>
-            <p className="text-sm text-muted-foreground">
-              We will scrape your website, local listings, and competitors (via
-              RTRVR), plus any PDFs and Google Docs you added.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(4)}>Back</Button>
-              <Button type="button" disabled={generating} onClick={() => void runGenerate()}>
-                {generating ? 'Starting…' : 'Generate training program'}
-              </Button>
-              <Link href="/dashboard">
-                <Button variant="outline">Skip to dashboard</Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Footer nav */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" onClick={back} disabled={step === 0}>
+          Back
+        </Button>
+        {step < STEPS.length - 1 ? (
+          <Button onClick={next}>Save & continue</Button>
+        ) : (
+          <Button onClick={onGenerate} disabled={generating}>
+            {generating ? (
+              <>
+                <Spinner size={16} /> Starting…
+              </>
+            ) : (
+              'Generate training program'
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SaveIndicator({ state }: { state: SaveState }) {
+  if (state === 'idle') return null;
+  const map: Record<Exclude<SaveState, 'idle'>, { tone: 'accent' | 'success' | 'danger'; label: string }> = {
+    saving: { tone: 'accent', label: 'Saving…' },
+    saved: { tone: 'success', label: 'Saved' },
+    error: { tone: 'danger', label: 'Save failed' },
+  };
+  const { tone, label } = map[state];
+  return (
+    <Badge tone={tone}>
+      {state === 'saving' && <Spinner size={12} className="mr-1" />}
+      {label}
+    </Badge>
+  );
+}
+
+function BasicsStep({
+  basics,
+  onChange,
+}: {
+  basics: Basics;
+  onChange: (patch: Partial<Basics>) => void;
+}) {
+  function toggleLang(code: LanguageCode) {
+    const has = basics.languages.includes(code);
+    const next = has
+      ? basics.languages.filter((l) => l !== code)
+      : [...basics.languages, code];
+    onChange({ languages: next.length ? next : ['en'] });
+  }
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Label htmlFor="name">Business name</Label>
+          <Input
+            id="name"
+            value={basics.name}
+            onChange={(e) => onChange({ name: e.target.value })}
+            placeholder="Happy Lemon — Mission St"
+          />
+        </div>
+        <div>
+          <Label htmlFor="industry">Industry</Label>
+          <Select
+            id="industry"
+            value={basics.industry}
+            onChange={(e) => onChange({ industry: e.target.value })}
+          >
+            {INDUSTRIES.map((i) => (
+              <option key={i} value={i}>
+                {i}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="employeeCount">Number of employees</Label>
+          <Input
+            id="employeeCount"
+            type="number"
+            min={0}
+            value={basics.employeeCount || ''}
+            onChange={(e) =>
+              onChange({ employeeCount: Number(e.target.value) || 0 })
+            }
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="address">Address</Label>
+          <Input
+            id="address"
+            value={basics.address}
+            onChange={(e) => onChange({ address: e.target.value })}
+            placeholder="2400 Mission St, San Francisco, CA 94110"
+          />
+        </div>
+        <div>
+          <Label htmlFor="state">State</Label>
+          <Select
+            id="state"
+            value={basics.state}
+            onChange={(e) => onChange({ state: e.target.value })}
+          >
+            {US_STATES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
+      <div>
+        <Label>Languages your team speaks</Label>
+        <div className="flex flex-wrap gap-2">
+          {LANGUAGES.map((l) => {
+            const active = basics.languages.includes(l.code);
+            return (
+              <button
+                key={l.code}
+                type="button"
+                onClick={() => toggleLang(l.code)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-sm transition',
+                  active
+                    ? 'border-brand bg-brand-soft text-brand-foreground'
+                    : 'border-border text-muted hover:bg-brand-soft',
+                )}
+              >
+                {l.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div>
+        <Label htmlFor="demographics">Team demographics (optional)</Label>
+        <Textarea
+          id="demographics"
+          value={basics.demographics}
+          onChange={(e) => onChange({ demographics: e.target.value })}
+          placeholder="e.g. Mostly first- and second-generation immigrant staff; many Mandarin and Spanish speakers."
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="mission">Mission / vibe (optional)</Label>
+        <Textarea
+          id="mission"
+          value={basics.mission}
+          onChange={(e) => onChange({ mission: e.target.value })}
+          placeholder="What do you want every customer and teammate to feel?"
+        />
+      </div>
+    </>
+  );
+}
+
+function RolesStep({
+  roles,
+  onChange,
+}: {
+  roles: BusinessRole[];
+  onChange: (next: BusinessRole[]) => void;
+}) {
+  function addRole() {
+    onChange([
+      ...roles,
+      {
+        id: `role_${Math.random().toString(36).slice(2, 8)}`,
+        title: '',
+        customerFacing: true,
+      },
+    ]);
+  }
+  function update(id: string, patch: Partial<BusinessRole>) {
+    onChange(roles.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+  function remove(id: string) {
+    onChange(roles.filter((r) => r.id !== id));
+  }
+  return (
+    <div className="space-y-3">
+      {roles.length === 0 && (
+        <p className="text-sm text-muted">
+          Add the roles people are hired into — e.g. Barista, Cashier, Shift
+          Lead.
+        </p>
       )}
+      {roles.map((role) => (
+        <div
+          key={role.id}
+          className="rounded-[var(--radius)] border border-border p-3"
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              value={role.title}
+              onChange={(e) => update(role.id, { title: e.target.value })}
+              placeholder="Role title (e.g. Barista)"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => remove(role.id)}
+              aria-label="Remove role"
+            >
+              ✕
+            </Button>
+          </div>
+          <Textarea
+            className="mt-2"
+            rows={2}
+            value={role.description ?? ''}
+            onChange={(e) => update(role.id, { description: e.target.value })}
+            placeholder="What does this role do day-to-day?"
+          />
+          <label className="mt-2 flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={role.customerFacing}
+              onChange={(e) =>
+                update(role.id, { customerFacing: e.target.checked })
+              }
+            />
+            Customer-facing
+          </label>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" onClick={addRole}>
+        + Add role
+      </Button>
+    </div>
+  );
+}
+
+function OpsStep({
+  ops,
+  onChange,
+}: {
+  ops: Ops;
+  onChange: (patch: Partial<Ops>) => void;
+}) {
+  const fields: [keyof Ops, string, string][] = [
+    ['openingClosing', 'Opening & closing', 'Walk through what happens when you open and close.'],
+    ['cleaning', 'Cleaning & sanitation', 'Daily/weekly cleaning, sanitizing, who does what.'],
+    ['machineOperations', 'Machine operations', 'Sealers, blenders, tea brewers — how to run them safely.'],
+    ['drinkProduction', 'Drink production', 'Standard build steps, portions, quality checks.'],
+  ];
+  return (
+    <div className="space-y-4">
+      {fields.map(([key, label, placeholder]) => (
+        <div key={key}>
+          <Label htmlFor={key}>{label}</Label>
+          <Textarea
+            id={key}
+            rows={4}
+            value={ops[key]}
+            onChange={(e) => onChange({ [key]: e.target.value })}
+            placeholder={placeholder}
+          />
+        </div>
+      ))}
+      <div>
+        <Label htmlFor="notes">Anything else?</Label>
+        <Textarea
+          id="notes"
+          rows={3}
+          value={ops.notes}
+          onChange={(e) => onChange({ notes: e.target.value })}
+          placeholder="Paste anything — policies, do's and don'ts, common mistakes."
+        />
+      </div>
+    </div>
+  );
+}
+
+function RecipesStep({
+  recipes,
+  onChange,
+}: {
+  recipes: Recipe[];
+  onChange: (next: Recipe[]) => void;
+}) {
+  function add() {
+    onChange([...recipes, { name: '', ingredients: [], steps: [] }]);
+  }
+  function update(idx: number, patch: Partial<Recipe>) {
+    onChange(recipes.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+  function remove(idx: number) {
+    onChange(recipes.filter((_, i) => i !== idx));
+  }
+  return (
+    <div className="space-y-3">
+      {recipes.length === 0 && (
+        <p className="text-sm text-muted">
+          Add signature recipes, or skip and upload a recipe sheet in the next
+          step.
+        </p>
+      )}
+      {recipes.map((recipe, idx) => (
+        <div
+          key={idx}
+          className="rounded-[var(--radius)] border border-border p-3 space-y-2"
+        >
+          <div className="flex items-center gap-2">
+            <Input
+              value={recipe.name}
+              onChange={(e) => update(idx, { name: e.target.value })}
+              placeholder="Recipe name (e.g. Brown Sugar Boba Milk)"
+            />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => remove(idx)}
+              aria-label="Remove recipe"
+            >
+              ✕
+            </Button>
+          </div>
+          <div>
+            <Label>Ingredients (one per line)</Label>
+            <Textarea
+              rows={3}
+              value={recipe.ingredients.join('\n')}
+              onChange={(e) =>
+                update(idx, { ingredients: textToList(e.target.value) })
+              }
+              placeholder={'Tapioca pearls\nBrown sugar syrup\nFresh milk'}
+            />
+          </div>
+          <div>
+            <Label>Steps (one per line)</Label>
+            <Textarea
+              rows={3}
+              value={recipe.steps.join('\n')}
+              onChange={(e) =>
+                update(idx, { steps: textToList(e.target.value) })
+              }
+              placeholder={'Boil pearls 20 min\nLayer syrup in cup\nAdd milk and pearls'}
+            />
+          </div>
+        </div>
+      ))}
+      <Button variant="outline" size="sm" onClick={add}>
+        + Add recipe
+      </Button>
+    </div>
+  );
+}
+
+function UploadsStep({
+  files,
+  onUpload,
+}: {
+  files: StoredFile[];
+  onUpload: (list: FileList | null, kind: StoredFile['kind']) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <UploadBox
+          label="Documents"
+          hint="Handbooks, recipe sheets, policies (PDF, docs)."
+          onPick={(l) => onUpload(l, 'upload')}
+        />
+        <UploadBox
+          label="Menu images"
+          hint="Photos of your menu board or drink list."
+          accept="image/*"
+          onPick={(l) => onUpload(l, 'menu_image')}
+        />
+      </div>
+      {files.length > 0 && (
+        <div>
+          <Label>Uploaded ({files.length})</Label>
+          <ul className="divide-y divide-border rounded-[var(--radius)] border border-border">
+            {files.map((f) => (
+              <li
+                key={f.id}
+                className="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+              >
+                <span className="truncate">{f.filename}</span>
+                <Badge tone={f.kind === 'menu_image' ? 'accent' : 'neutral'}>
+                  {f.kind === 'menu_image' ? 'menu image' : 'document'}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UploadBox({
+  label,
+  hint,
+  accept,
+  onPick,
+}: {
+  label: string;
+  hint: string;
+  accept?: string;
+  onPick: (list: FileList | null) => void;
+}) {
+  const ref = React.useRef<HTMLInputElement>(null);
+  const [drag, setDrag] = React.useState(false);
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        onPick(e.dataTransfer.files);
+      }}
+      onClick={() => ref.current?.click()}
+      className={cn(
+        'flex cursor-pointer flex-col items-center justify-center rounded-[var(--radius)] border-2 border-dashed p-6 text-center transition',
+        drag ? 'border-brand bg-brand-soft' : 'border-border hover:bg-brand-soft',
+      )}
+    >
+      <span className="font-medium">{label}</span>
+      <span className="mt-1 text-xs text-muted">{hint}</span>
+      <span className="mt-2 text-xs text-accent underline">
+        Click or drag files here
+      </span>
+      <input
+        ref={ref}
+        type="file"
+        multiple
+        accept={accept}
+        className="hidden"
+        onChange={(e) => onPick(e.target.files)}
+      />
+    </div>
+  );
+}
+
+function ReviewStep({
+  basics,
+  roles,
+  recipes,
+  files,
+}: {
+  basics: Basics;
+  roles: BusinessRole[];
+  recipes: Recipe[];
+  files: StoredFile[];
+}) {
+  const rows: [string, string][] = [
+    ['Business', basics.name || '—'],
+    ['Industry', basics.industry],
+    ['Location', `${basics.address || '—'} (${basics.state})`],
+    ['Employees', String(basics.employeeCount || 0)],
+    ['Languages', basics.languages.join(', ')],
+    ['Roles', roles.map((r) => r.title).filter(Boolean).join(', ') || '—'],
+    ['Recipes', String(recipes.length)],
+    ['Uploads', String(files.length)],
+  ];
+  return (
+    <div className="space-y-4">
+      <dl className="divide-y divide-border rounded-[var(--radius)] border border-border">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-4 px-3 py-2 text-sm">
+            <dt className="text-muted">{k}</dt>
+            <dd className="text-right font-medium">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-sm text-muted">
+        Generating runs research → curriculum → compliance and builds your
+        modules. You can review and edit everything afterward on the dashboard.
+      </p>
     </div>
   );
 }

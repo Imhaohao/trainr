@@ -1,79 +1,71 @@
+// Stateless signed-cookie session. The cookie value is
+// `<base64url(payload)>.<HMAC-SHA256(payload)>`; tampering invalidates it.
+// Set/clear happen in Route Handlers & Server Actions (where cookies are
+// writable); reads work anywhere via next/headers cookies().
+
 import { cookies } from 'next/headers';
-import type { NextResponse } from 'next/server';
-import type { User, UserRole } from '@/types';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+import {
+  SESSION_COOKIE,
+  SESSION_MAX_AGE_SEC,
+  sessionSecret,
+} from './constants';
+import type { UserRole } from '../../types/index';
 
-export const SESSION_COOKIE = 'trainr_session';
-const MAX_AGE = 60 * 60 * 24 * 14; // 14 days
-
-export type SessionPayload = {
+export interface SessionData {
   userId: string;
   role: UserRole;
   businessId: string;
-};
-
-function encode(payload: SessionPayload): string {
-  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
 }
 
-function decode(raw: string): SessionPayload | null {
+function sign(payloadB64: string): string {
+  return createHmac('sha256', sessionSecret())
+    .update(payloadB64)
+    .digest('base64url');
+}
+
+function encode(data: SessionData): string {
+  const payload = Buffer.from(JSON.stringify(data)).toString('base64url');
+  return `${payload}.${sign(payload)}`;
+}
+
+function decode(token: string): SessionData | null {
+  const dot = token.lastIndexOf('.');
+  if (dot < 0) return null;
+  const payload = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  const expected = sign(payload);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
   try {
-    const json = Buffer.from(raw, 'base64url').toString('utf8');
-    const parsed = JSON.parse(json) as SessionPayload;
-    if (!parsed.userId || !parsed.role) return null;
-    return {
-      userId: parsed.userId,
-      role: parsed.role,
-      businessId: parsed.businessId ?? '',
-    };
+    return JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8'),
+    ) as SessionData;
   } catch {
     return null;
   }
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
-  const jar = await cookies();
-  const raw = jar.get(SESSION_COOKIE)?.value;
-  if (!raw) return null;
-  return decode(raw);
-}
-
-export function applySessionCookie(
-  res: NextResponse,
-  payload: SessionPayload,
-): NextResponse {
-  res.cookies.set(SESSION_COOKIE, encode(payload), {
+export async function setSession(data: SessionData): Promise<void> {
+  const store = await cookies();
+  store.set(SESSION_COOKIE, encode(data), {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
     path: '/',
-    maxAge: MAX_AGE,
-  });
-  return res;
-}
-
-export async function setSessionOnResponse(
-  payload: SessionPayload,
-): Promise<SessionPayload> {
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, encode(payload), {
-    httpOnly: true,
-    sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    path: '/',
-    maxAge: MAX_AGE,
+    maxAge: SESSION_MAX_AGE_SEC,
   });
-  return payload;
 }
 
 export async function clearSession(): Promise<void> {
-  const jar = await cookies();
-  jar.delete(SESSION_COOKIE);
+  const store = await cookies();
+  store.delete(SESSION_COOKIE);
 }
 
-export function sessionFromUser(user: User): SessionPayload {
-  return {
-    userId: user.id,
-    role: user.role,
-    businessId: user.businessId,
-  };
+export async function getSession(): Promise<SessionData | null> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  return decode(token);
 }

@@ -1,64 +1,39 @@
-// POST /api/auth/login { email, password? } -> { user }
+// POST /api/auth/login { email, password } -> { user, business }
+// Verifies stored credentials and starts a session for the matching user.
 
+import { z } from 'zod';
 import { getDb } from '@/lib/contracts/db';
-import { verifyOwnerPassword } from '@/lib/auth/credentials';
-import {
-  applySessionCookie,
-  sessionFromUser,
-} from '@/lib/auth/session';
 import { ok, fail, readJson } from '@/lib/http';
-import { demoOwner, IDS } from '@/lib/mocks/fixtures';
+import { findCredentialByEmail, verifyPassword, setSession } from '@/lib/auth';
+
+const Body = z.object({
+  email: z.string().trim().email(),
+  password: z.string().min(1),
+});
 
 export async function POST(req: Request) {
-  const body = await readJson<{ email?: string; password?: string }>(req);
-  if (!body.email?.trim()) return fail('Email is required');
+  const parsed = Body.safeParse(await readJson(req));
+  if (!parsed.success) return fail('Enter your email and password.');
+  const { email, password } = parsed.data;
 
-  const email = body.email.trim().toLowerCase();
-  const db = getDb();
-
-  if (process.env.USE_MOCKS === 'true') {
-    const user =
-      (await db.users.get(IDS.owner)) ??
-      (await db.users.list()).find(
-        (u) => u.role === 'owner' && u.email?.toLowerCase() === email,
-      );
-    if (!user) return fail('Invalid email or password', 401);
-    const res = ok({ user });
-    return applySessionCookie(res, sessionFromUser(user));
+  const cred = findCredentialByEmail(email);
+  if (!cred || !verifyPassword(password, cred.passwordHash)) {
+    return fail('Invalid email or password.', 401);
   }
 
-  const cred = body.password
-    ? await verifyOwnerPassword(email, body.password)
+  const db = getDb();
+  const user = await db.users.get(cred.userId);
+  if (!user) return fail('Account not found.', 404);
+
+  await setSession({
+    userId: user.id,
+    role: user.role,
+    businessId: user.businessId,
+  });
+
+  const business = user.businessId
+    ? await db.businesses.get(user.businessId)
     : null;
 
-  if (cred) {
-    const user = await db.users.get(cred.userId);
-    if (!user) return fail('Invalid email or password', 401);
-    const res = ok({ user });
-    return applySessionCookie(res, sessionFromUser(user));
-  }
-
-  if (
-    email === demoOwner.email?.toLowerCase() &&
-    (!body.password || body.password === 'demo123')
-  ) {
-    const user = await db.users.get(IDS.owner);
-    if (user) {
-      const res = ok({ user });
-      return applySessionCookie(res, sessionFromUser(user));
-    }
-  }
-
-  const byEmail = (await db.users.list()).find(
-    (u) => u.role === 'owner' && u.email?.toLowerCase() === email,
-  );
-  if (byEmail && body.password) {
-    const retry = await verifyOwnerPassword(email, body.password);
-    if (retry) {
-      const res = ok({ user: byEmail });
-      return applySessionCookie(res, sessionFromUser(byEmail));
-    }
-  }
-
-  return fail('Invalid email or password', 401);
+  return ok({ user, business });
 }

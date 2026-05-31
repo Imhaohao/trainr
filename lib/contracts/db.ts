@@ -13,9 +13,9 @@ import type {
   AuditEvent,
   ChatMessage,
 } from '../../types/index';
-import { getInsforgeDb } from '../db/insforge-repository';
-import { getLocalDb } from '../db/local-repository';
 import { getMockDb } from '../mocks/mock-db';
+import { getLocalRepository } from '../db/local-repository';
+import { getInsforgeRepository } from '../db/insforge-repository';
 
 export interface CrudRepo<T> {
   get(id: string): Promise<T | null>;
@@ -39,13 +39,20 @@ export interface DbRepository {
   findBusinessByJoinCode(code: string): Promise<Business | null>;
 }
 
-// Returns Insforge when INSFORGE_API_KEY is present and USE_MOCKS !== 'true';
-// otherwise the in-memory mock/Local repository (guaranteed to work with zero keys).
+// Backend selection (T1 Phase 1):
+//   USE_MOCKS === 'true'                 -> in-memory mock seeded with the Happy
+//                                           Lemon fixture (one-click demo).
+//   else INSFORGE_API_URL + _API_KEY set -> InsforgeRepository (real PostgREST).
+//   else                                 -> LocalRepository (persistent JSON
+//                                           under .data/, zero external keys).
 //
-// Phase 0 ships the mock repository. Phase 1 (T1) adds InsforgeRepository (real)
-// and a persistent LocalRepository under lib/db/ and selects here.
+// Both URL and key are required for Insforge — selecting it with only one set
+// would throw on the first request. The mock and Local repositories pass the
+// same smoke test; the demo runs fully even if Insforge creds never arrive.
 export function getDb(): DbRepository {
   if (process.env.USE_MOCKS === 'true') return getMockDb();
-  if (process.env.INSFORGE_API_KEY?.trim()) return getInsforgeDb();
-  return getLocalDb();
+  if (process.env.INSFORGE_API_KEY && process.env.INSFORGE_API_URL) {
+    return getInsforgeRepository();
+  }
+  return getLocalRepository();
 }

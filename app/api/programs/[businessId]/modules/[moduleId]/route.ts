@@ -4,6 +4,7 @@
 
 import { getDb } from '@/lib/contracts/db';
 import { ok, fail, readJson } from '@/lib/http';
+import { ownedBusinessOr403 } from '@/lib/auth';
 import type { TrainingModule } from '@/types';
 
 export async function PATCH(
@@ -11,6 +12,12 @@ export async function PATCH(
   { params }: { params: Promise<{ businessId: string; moduleId: string }> },
 ) {
   const { businessId, moduleId } = await params;
+
+  // Owner-only (T1 cross-track security patch — see INTEGRATION_LOG). The owner
+  // dashboard's inline module editor calls this; only the owning owner may edit.
+  const owned = await ownedBusinessOr403(businessId);
+  if (!owned) return fail('Forbidden.', 403);
+
   const patch = await readJson<Partial<TrainingModule>>(req);
   const db = getDb();
 

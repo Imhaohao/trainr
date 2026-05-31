@@ -6,17 +6,21 @@
 // the next run rather than restarting.
 
 import { nanoid } from 'nanoid';
-import { getDb } from '@/lib/contracts/db';
 import { runPipeline } from '@/lib/agents/orchestrator';
 import { ok, fail } from '@/lib/http';
+import { ownedBusinessOr403 } from '@/lib/auth';
 
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ businessId: string }> },
 ) {
   const { businessId } = await params;
-  const business = await getDb().businesses.get(businessId);
-  if (!business) return fail('Business not found', 404);
+
+  // Owner-only (T1 cross-track security patch — see INTEGRATION_LOG). Only the
+  // owning owner may trigger the generation pipeline for their business. The
+  // guard also 404/403s when the business doesn't exist or isn't theirs.
+  const owned = await ownedBusinessOr403(businessId);
+  if (!owned) return fail('Forbidden.', 403);
 
   const runId = `run_${nanoid(10)}`;
 

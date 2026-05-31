@@ -1,7 +1,8 @@
 'use client';
 
+import * as React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { cn } from '@/components/ui';
 
 // All owner routes are pre-seeded here in Phase 0 — including /compliance and
@@ -15,6 +16,19 @@ const NAV: { href: string; label: string; icon: string }[] = [
 
 export function OwnerNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [signingOut, setSigningOut] = React.useState(false);
+
+  async function signOut() {
+    setSigningOut(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.push('/login');
+      router.refresh();
+    }
+  }
+
   return (
     <nav className="flex flex-col gap-1">
       {NAV.map((item) => {
@@ -36,6 +50,18 @@ export function OwnerNav() {
           </Link>
         );
       })}
+      <button
+        type="button"
+        onClick={signOut}
+        disabled={signingOut}
+        className={cn(
+          'mt-1 flex items-center gap-3 rounded-[var(--radius)] px-3 py-2 text-left text-sm font-medium transition',
+          'text-muted hover:bg-brand-soft hover:text-foreground disabled:opacity-50',
+        )}
+      >
+        <span aria-hidden>↩</span>
+        {signingOut ? 'Signing out…' : 'Sign out'}
+      </button>
     </nav>
   );
 }

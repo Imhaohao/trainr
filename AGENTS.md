@@ -1,19 +1,22 @@
-# Trainr — agent notes
+# AGENTS.md
 
-## UI components (shadcn)
+<!-- INSFORGE:START -->
+## InsForge backend
 
-This repo uses **shadcn/ui** components installed into the codebase (not a separate component library import).
+This project uses [InsForge](https://insforge.dev): an all-in-one, open-source Postgres-based backend (BaaS) that gives this app a database, authentication, file storage, edge functions, realtime, an AI model gateway, and payments through one platform.
 
-When you need a UI primitive:
+- **Project:** **Trainr** (API base `https://5mq467pc.us-east.insforge.app`)
+- **Skills:** these InsForge skills are installed for supported coding agents. Reach for them before implementing any InsForge feature instead of guessing the API:
+  - `insforge`: app code with the `@insforge/sdk` client (database CRUD, auth, storage, edge functions, realtime, AI, email, and Stripe payments).
+  - `insforge-cli`: backend and infrastructure via the `insforge` CLI (projects, SQL, migrations, RLS policies, storage buckets, functions, secrets, payment setup, schedules, deploys).
+  - `insforge-debug`: diagnosing failures (SDK/HTTP errors, RLS denials, auth and OAuth issues) and running security or performance audits.
+  - `insforge-integrations`: wiring external auth providers (Clerk, Auth0, WorkOS, Better Auth, etc.) for JWT-based RLS, or the OKX x402 payment facilitator.
+  - `find-skills`: discovering additional skills on demand.
+- **Credentials:** app code reads keys from `.env.local`; the CLI reads `.insforge/project.json`. Never hardcode or commit keys.
 
-1. **Reuse first** — check `@/components/ui` and import from `@/components/ui` (see `components/ui/index.ts`).
-2. **Add via shadcn CLI** — if a component is missing, install it with the project config instead of hand-writing a custom one:
+Key patterns:
 
-   ```bash
-   npx shadcn@latest add <component-name>
-   ```
-
-   Config lives in `components.json` (`style: radix-rhea`, aliases point at `@/components/ui` and `@/lib/utils`).
-
-3. **Keep changes additive** — one component per file under `components/ui/`. Export new components from `components/ui/index.ts`. Do not reorganize or rewrite existing shadcn files unless fixing a bug.
-4. **Match conventions** — use the downloaded shadcn patterns (`cn` from `@/lib/utils`, Radix primitives, CVA variants). Do not substitute ad-hoc HTML/CSS buttons, inputs, or dialogs when a shadcn component exists or can be added.
+- Database inserts take an array: `insert([{ ... }])`.
+- Reference users with `auth.users(id)`; use `auth.uid()` in RLS policies.
+- For storage uploads, persist both the returned `url` and `key`.
+<!-- INSFORGE:END -->

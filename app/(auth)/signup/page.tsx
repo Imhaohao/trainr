@@ -13,6 +13,7 @@ import {
   Input,
   Label,
 } from '@/components/ui';
+import { GoogleButton } from '@/components/auth/GoogleButton';
 
 export default function OwnerSignupPage() {
   const router = useRouter();
@@ -52,6 +53,12 @@ export default function OwnerSignupPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <GoogleButton label="Sign up with Google" />
+        <div className="my-4 flex items-center gap-3 text-xs text-muted">
+          <span className="h-px flex-1 bg-border" />
+          or
+          <span className="h-px flex-1 bg-border" />
+        </div>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <Label htmlFor="name">Your name</Label>
@@ -63,7 +70,15 @@ export default function OwnerSignupPage() {
           </div>
           <div>
             <Label htmlFor="password">Password</Label>
-            <Input id="password" name="password" type="password" />
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              minLength={8}
+              required
+              autoComplete="new-password"
+            />
+            <p className="mt-1 text-xs text-muted">At least 8 characters.</p>
           </div>
           {error && <p className="text-sm text-danger">{error}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
