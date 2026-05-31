@@ -8,8 +8,6 @@
 //   `${businessId}/pdf/...`
 //   `${businessId}/i18n/<lang>/...`
 
-import { mockStorage } from '../mocks/mock-storage';
-
 export interface StorageAdapter {
   putObject(
     key: string,
@@ -21,14 +19,8 @@ export interface StorageAdapter {
   list(prefix: string): Promise<string[]>;
 }
 
-// Returns the mock storage when USE_MOCKS==='true' or AWS creds are missing.
-// The real Tigris (S3) adapter is wired by T2 in lib/integrations/tigris.ts.
-export function getStorage(): StorageAdapter {
-  const useMocks =
-    process.env.USE_MOCKS === 'true' ||
-    !process.env.AWS_ACCESS_KEY_ID ||
-    !process.env.AWS_ENDPOINT_URL_S3;
-  if (useMocks) return mockStorage;
-  // T2: return real Tigris adapter here once integrations land.
-  return mockStorage;
-}
+// Returns the mock storage when USE_MOCKS==='true' or AWS creds are missing,
+// otherwise the real Tigris (S3) adapter. Selection lives in the integration
+// (lib/integrations/tigris.ts) so there's a single source of truth; this stays
+// the stable import surface every consumer uses.
+export { getStorage } from '../integrations/tigris';
