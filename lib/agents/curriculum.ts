@@ -44,6 +44,11 @@ export interface CurriculumResult {
   scheduleWeeks: OnboardingWeek[];
 }
 
+/** Matches `trainingProgramSchema` DoD: assembled programs need ≥2 role modules. */
+export function curriculumMeetsRoleDoD(result: CurriculumResult): boolean {
+  return result.modules.filter((m) => m.type === 'role_specific').length >= 2;
+}
+
 interface ModulePlan {
   type: TrainingModuleType;
   title: string;
@@ -56,6 +61,83 @@ interface ModulePlan {
 // ---------------------------------------------------------------------------
 // Plan the modules from the business + intake.
 // ---------------------------------------------------------------------------
+
+/** DoD gate: assembled programs need ≥2 role_specific modules. */
+function ensureMinimumRoleModules(
+  plan: ModulePlan[],
+  business: CurriculumBusiness,
+): void {
+  const roleSpecific = plan.filter((p) => p.type === 'role_specific');
+  const needed = 2 - roleSpecific.length;
+  if (needed <= 0) return;
+
+  const namedRoles = business.roles.filter((r) => r.title.trim());
+
+  if (namedRoles.length === 0) {
+    plan.push(
+      {
+        type: 'role_specific',
+        title: 'Front of House: Role Essentials',
+        keyPoints: [
+          'greeting guests and taking orders accurately',
+          'handoffs between front and back of house',
+          'keeping the customer area clean and welcoming',
+        ],
+        match: /front|customer|cashier|guest|order/i,
+      },
+      {
+        type: 'role_specific',
+        title: 'Production: Role Essentials',
+        keyPoints: [
+          'following recipes and build standards every time',
+          'food safety and quality checks during prep',
+          'communicating delays or outages to the team',
+        ],
+        match: /production|barista|prep|recipe|quality/i,
+      },
+    );
+    return;
+  }
+
+  const role = namedRoles[0];
+  for (let i = 0; i < needed; i++) {
+    const supplement =
+      i === 0 && roleSpecific.length === 1
+        ? role.customerFacing
+          ? {
+              title: `${role.title}: Customer Interactions`,
+              keyPoints: [
+                'handling common customer questions and special requests',
+                'recovering calmly when something goes wrong',
+                'when to call a shift lead or manager',
+              ],
+            }
+          : {
+              title: `${role.title}: Team Coordination`,
+              keyPoints: [
+                'how this role supports other stations during rush',
+                'quality checks before items go out',
+                'clear communication with front-of-house staff',
+              ],
+            }
+        : {
+            title: `${role.title}: On-the-Job Scenarios`,
+            keyPoints: [
+              'what to do during a busy rush',
+              'common mistakes and how to avoid them',
+              'who to ask when something is unclear',
+            ],
+          };
+
+    plan.push({
+      type: 'role_specific',
+      roleId: role.id,
+      title: supplement.title,
+      keyPoints: supplement.keyPoints,
+      match: new RegExp(role.title.replace(/[^a-z0-9]+/gi, '.?'), 'i'),
+    });
+  }
+}
 
 function planModules(input: CurriculumInput): ModulePlan[] {
   const { business, intake } = input;
@@ -73,6 +155,7 @@ function planModules(input: CurriculumInput): ModulePlan[] {
   });
 
   for (const role of business.roles) {
+    if (!role.title.trim()) continue;
     plan.push({
       type: 'role_specific',
       roleId: role.id,
@@ -87,6 +170,8 @@ function planModules(input: CurriculumInput): ModulePlan[] {
       match: new RegExp(role.title.replace(/[^a-z0-9]+/gi, '.?'), 'i'),
     });
   }
+
+  ensureMinimumRoleModules(plan, business);
 
   if (intake?.openingClosing) {
     plan.push({

@@ -15,7 +15,11 @@ import { getResearch } from '../contracts/research';
 import { getStorage } from '../contracts/storage';
 import { tigrisKeys } from '../integrations/tigris';
 import { buildBusinessResearchQueries } from '../integrations/rtrvr';
-import { generateCurriculum, type CurriculumResult } from './curriculum';
+import {
+  curriculumMeetsRoleDoD,
+  generateCurriculum,
+  type CurriculumResult,
+} from './curriculum';
 import { generateCompliance } from './compliance';
 import { trainingProgramSchema } from './schemas';
 import type {
@@ -206,7 +210,12 @@ export async function runPipeline(
     await setRunStatus(status('curriculum'));
     await db.businesses.update(businessId, { status: 'generating' });
     let curriculum = checkpoint?.curriculum;
-    if (!curriculum) {
+    if (!curriculum || !curriculumMeetsRoleDoD(curriculum)) {
+      if (curriculum && !curriculumMeetsRoleDoD(curriculum)) {
+        console.warn(
+          '[orchestrator] curriculum checkpoint missing ≥2 role_specific modules; regenerating',
+        );
+      }
       const intake = (await db.intake.get(businessId)) ?? undefined;
       curriculum = await generateCurriculum({
         businessId,
@@ -223,7 +232,8 @@ export async function runPipeline(
         research,
         startOrder: 1,
       });
-      await saveCheckpoint('curriculum', { curriculum });
+      // Curriculum shape changed — downstream compliance module orders must rebuild.
+      await saveCheckpoint('curriculum', { curriculum, compliance: undefined });
     }
 
     // --- Stage 3: compliance ---------------------------------------------
