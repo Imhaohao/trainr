@@ -1,4 +1,6 @@
 import Image from "next/image";
+import Link from "next/link";
+import { MarketingNavbar } from "@/components/layout/AppNavbars";
 import Testimonials from "@/components/landing/testimonials";
 
 /* ------------------------------------------------------------------ */
@@ -126,6 +128,70 @@ const BENEFITS = [
   },
 ];
 
+/* ------------------------------------------------------------------ */
+/* App entry points (owner + employee workflows)                       */
+/* ------------------------------------------------------------------ */
+const WORKFLOWS = [
+  {
+    step: "01",
+    title: "Training context",
+    desc: "Capture roles, recipes, operations, and uploads — Trainr structures your business knowledge.",
+    href: "/onboarding",
+    cta: "Start intake",
+  },
+  {
+    step: "02",
+    title: "Training creation",
+    desc: "Generate modules and quizzes from your intake, then review and edit the program.",
+    href: "/dashboard",
+    cta: "Open program builder",
+  },
+  {
+    step: "03",
+    title: "Business dashboard",
+    desc: "Share join codes, track progress, run compliance checks, and publish to your team.",
+    href: "/dashboard",
+    cta: "Go to dashboard",
+  },
+] as const;
+
+const FOOTER_LINKS = [
+  { href: "/signup", label: "Create account" },
+  { href: "/login", label: "Owner login" },
+  { href: "/onboarding", label: "Intake wizard" },
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/compliance", label: "Compliance" },
+  { href: "/deploy", label: "Deploy" },
+  { href: "/join", label: "Employee join" },
+] as const;
+
+const SIGN_IN_PATHS = [
+  {
+    audience: "Small business owner",
+    headline: "Build and run your training program",
+    desc: "Sign up, capture your business context, generate modules, and publish to your team from one owner workspace.",
+    bullets: [
+      "Email and password login",
+      "Intake wizard, dashboard, compliance, deploy",
+      "Share join codes with new hires",
+    ],
+    primary: { href: "/signup", label: "Create owner account" },
+    secondary: { href: "/login", label: "Owner log in" },
+  },
+  {
+    audience: "Employee",
+    headline: "Join your team’s training",
+    desc: "Enter the join code from your manager — no password required. Pick up modules, quizzes, and your AI coach from there.",
+    bullets: [
+      "Join code + your name only",
+      "Works on phone between shifts",
+      "Demo code for Happy Lemon: HLEMON",
+    ],
+    primary: { href: "/join", label: "Join with code" },
+    secondary: null,
+  },
+] as const;
+
 /* ================================================================== */
 /* Page                                                                */
 /* ================================================================== */
@@ -135,6 +201,8 @@ export default function Home() {
       className="flex w-full flex-1 flex-col font-sans"
       style={{ backgroundColor: COLORS.white, color: COLORS.textBlack }}
     >
+      <MarketingNavbar />
+
       {/* =========================================================== */}
       {/* HERO                                                        */}
       {/* =========================================================== */}
@@ -163,31 +231,14 @@ export default function Home() {
 
         {/* Foreground content */}
         <div
-          className="relative z-10 flex min-h-[90vh] flex-col px-6 py-7 sm:px-10 sm:py-9 lg:px-14"
+          className="relative z-10 flex min-h-[85vh] flex-col px-6 py-7 sm:px-10 sm:py-9 lg:px-14"
           style={{ color: COLORS.white }}
         >
-          {/* Top bar */}
-          <header className="flex items-start justify-between gap-6">
-            <p className="max-w-[15rem] text-[10px] font-medium uppercase leading-[1.7] tracking-[0.22em] sm:text-[11px]">
-              AI Training Software
-              <br />
-              For Restaurants and Small Businesses
-            </p>
-
-            <a
-              href="#waitlist"
-              className="shrink-0 rounded-[2px] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.22em] transition-colors hover:bg-transparent hover:text-[var(--w)] hover:ring-1 hover:ring-[var(--w)] sm:px-6 sm:py-3"
-              style={
-                {
-                  backgroundColor: COLORS.white,
-                  color: COLORS.nearBlack,
-                  ["--w" as string]: COLORS.white,
-                } as React.CSSProperties
-              }
-            >
-              Join Waitlist
-            </a>
-          </header>
+          <p className="max-w-[15rem] text-[10px] font-medium uppercase leading-[1.7] tracking-[0.22em] text-white/80 sm:text-[11px]">
+            AI Training Software
+            <br />
+            For Restaurants and Small Businesses
+          </p>
 
           {/* Center wordmark */}
           <div className="flex flex-1 flex-col items-center justify-center text-center">
@@ -196,11 +247,105 @@ export default function Home() {
             </h1>
           </div>
 
-          {/* Bottom tagline */}
-          <div className="flex justify-center pb-2">
+          {/* Bottom tagline + entry */}
+          <div className="flex flex-col items-center gap-6 pb-2">
             <p className="max-w-2xl text-center text-[10px] font-medium uppercase leading-[1.8] tracking-[0.28em] text-white/85 sm:text-xs">
               Your AI training layer for faster onboarding and better teams
             </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/onboarding"
+                className="rounded-[2px] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] ring-1 ring-white/35 transition-colors hover:bg-white/10"
+              >
+                Set up training context
+              </Link>
+              <Link
+                href="/dashboard"
+                className="rounded-[2px] px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.2em] transition-opacity hover:opacity-85"
+                style={{ backgroundColor: COLORS.white, color: COLORS.nearBlack }}
+              >
+                Open dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* =========================================================== */}
+      {/* SIGN IN — owner vs employee                                 */}
+      {/* =========================================================== */}
+      <section
+        id="sign-in"
+        className="w-full px-6 py-20 sm:px-10 sm:py-28 lg:px-14"
+        style={{ backgroundColor: COLORS.mutedTeal, color: COLORS.white }}
+      >
+        <div className="mx-auto w-full max-w-6xl">
+          <div className="max-w-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/45">
+              Sign in
+            </p>
+            <h2 className="mt-5 text-3xl font-medium leading-[1.12] tracking-tight sm:text-4xl lg:text-[2.9rem]">
+              Two ways into Trainr
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-white/65 sm:text-base">
+              Owners manage programs and compliance. Employees join with a code
+              from their manager and start training right away.
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {SIGN_IN_PATHS.map((path) => (
+              <article
+                key={path.audience}
+                className="flex flex-col justify-between gap-8 rounded-[2px] border p-8 sm:p-10"
+                style={{
+                  borderColor: "rgba(247,247,242,0.18)",
+                  backgroundColor: "rgba(5,7,6,0.2)",
+                }}
+              >
+                <div className="flex flex-col gap-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-white/45">
+                    {path.audience}
+                  </p>
+                  <h3 className="text-xl font-medium tracking-tight sm:text-2xl">
+                    {path.headline}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-white/60">
+                    {path.desc}
+                  </p>
+                  <ul className="flex flex-col gap-2 text-sm text-white/55">
+                    {path.bullets.map((bullet) => (
+                      <li key={bullet} className="flex gap-2">
+                        <span className="text-white/35" aria-hidden="true">
+                          —
+                        </span>
+                        <span>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={path.primary.href}
+                    className="rounded-[2px] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] transition-opacity hover:opacity-90"
+                    style={{
+                      backgroundColor: COLORS.white,
+                      color: COLORS.deepGreen,
+                    }}
+                  >
+                    {path.primary.label}
+                  </Link>
+                  {path.secondary ? (
+                    <Link
+                      href={path.secondary.href}
+                      className="rounded-[2px] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] ring-1 ring-white/30 transition-colors hover:bg-white/10"
+                    >
+                      {path.secondary.label}
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -224,13 +369,13 @@ export default function Home() {
               </h2>
             </div>
 
-            <a
-              href="#waitlist"
+            <Link
+              href="/signup"
               className="self-start rounded-[2px] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] transition-opacity hover:opacity-85 lg:self-auto"
               style={{ backgroundColor: COLORS.nearBlack, color: COLORS.white }}
             >
-              Join Waitlist
-            </a>
+              Get started free
+            </Link>
           </div>
 
           {/* 2x3 grid */}
@@ -258,6 +403,72 @@ export default function Home() {
       </section>
 
       {/* =========================================================== */}
+      {/* PRODUCT WORKFLOWS                                           */}
+      {/* =========================================================== */}
+      <section
+        id="workflows"
+        className="w-full px-6 py-20 sm:px-10 sm:py-28 lg:px-14"
+        style={{ backgroundColor: COLORS.deepGreen, color: COLORS.white }}
+      >
+        <div className="mx-auto w-full max-w-6xl">
+          <div className="max-w-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-white/45">
+              How it works
+            </p>
+            <h2 className="mt-5 text-3xl font-medium leading-[1.12] tracking-tight sm:text-4xl lg:text-[2.9rem]">
+              From business context to trained teams
+            </h2>
+            <p className="mt-4 text-sm leading-relaxed text-white/65 sm:text-base">
+              Owners capture operational knowledge, generate a training program,
+              and manage rollout from one workspace. Employees join with a code.
+            </p>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {WORKFLOWS.map((flow) => (
+              <Link
+                key={flow.step}
+                href={flow.href}
+                className="group flex flex-col justify-between gap-8 rounded-[2px] border p-8 transition-colors hover:bg-white/5 sm:p-10"
+                style={{ borderColor: "rgba(247,247,242,0.18)" }}
+              >
+                <div className="flex flex-col gap-4">
+                  <span className="text-[11px] font-semibold tracking-[0.2em] text-white/40">
+                    {flow.step}
+                  </span>
+                  <h3 className="text-xl font-medium tracking-tight">
+                    {flow.title}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-white/60">
+                    {flow.desc}
+                  </p>
+                </div>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80 transition-colors group-hover:text-white">
+                  {flow.cta} →
+                </span>
+              </Link>
+            ))}
+          </div>
+
+          <div className="mt-10 flex flex-wrap gap-4">
+            <Link
+              href="/signup"
+              className="rounded-[2px] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.22em]"
+              style={{ backgroundColor: COLORS.white, color: COLORS.deepGreen }}
+            >
+              Create owner account
+            </Link>
+            <Link
+              href="/join"
+              className="rounded-[2px] px-6 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] ring-1 ring-white/30 transition-colors hover:bg-white/10"
+            >
+              Join as employee
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* =========================================================== */}
       {/* CASE STUDIES                                                */}
       {/* =========================================================== */}
       <Testimonials />
@@ -266,7 +477,6 @@ export default function Home() {
       {/* WHAT IT IS — venn                                           */}
       {/* =========================================================== */}
       <section
-        id="waitlist"
         className="w-full px-6 py-24 sm:px-10 sm:py-32 lg:px-14"
         style={{ backgroundColor: COLORS.deepGreen, color: COLORS.white }}
       >
@@ -291,11 +501,32 @@ export default function Home() {
         className="w-full border-t px-6 py-10 sm:px-10 lg:px-14"
         style={{ backgroundColor: COLORS.nearBlack, color: COLORS.white, borderColor: "rgba(247,247,242,0.1)" }}
       >
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <span className="text-sm font-semibold tracking-[0.35em]">TRAINR</span>
-          <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-white/45">
-            © {new Date().getFullYear()} Trainr — AI training for frontline teams
-          </p>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+          <nav
+            className="flex flex-wrap justify-center gap-x-6 gap-y-3 sm:justify-start"
+            aria-label="App navigation"
+          >
+            {FOOTER_LINKS.map((link) => (
+              <Link
+                key={link.href + link.label}
+                href={link.href}
+                className="text-[10px] font-medium uppercase tracking-[0.2em] text-white/50 transition-colors hover:text-white"
+              >
+                {link.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
+            <Link
+              href="/"
+              className="text-sm font-semibold tracking-[0.35em] transition-opacity hover:opacity-80"
+            >
+              TRAINR
+            </Link>
+            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-white/45">
+              © {new Date().getFullYear()} Trainr — AI training for frontline teams
+            </p>
+          </div>
         </div>
       </footer>
     </main>

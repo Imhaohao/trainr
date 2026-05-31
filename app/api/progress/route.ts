@@ -1,5 +1,4 @@
-// POST /api/progress { employeeId, moduleId, status, quizScore? } -> { progress }
-// Phase 0 STUB — owner: T3. Upserts an EmployeeProgress row in the active DB.
+// POST /api/progress { employeeId, moduleId, status, quizScore?, simScore?, certified? } -> { progress }
 
 import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/contracts/db';
@@ -12,6 +11,10 @@ interface Body {
   moduleId?: string;
   status?: ProgressStatus;
   quizScore?: number;
+  quizPassed?: boolean;
+  simScore?: number;
+  simPassed?: boolean;
+  certified?: boolean;
 }
 
 export async function POST(req: Request) {
@@ -23,7 +26,7 @@ export async function POST(req: Request) {
   const all = await db.progress.list({ employeeId: body.employeeId });
   const existing = all.find((p) => p.moduleId === body.moduleId);
 
-  const status: ProgressStatus = body.status ?? 'in_progress';
+  const status: ProgressStatus = body.status ?? existing?.status ?? 'in_progress';
   const completed = status === 'completed';
 
   let progress: EmployeeProgress;
@@ -31,7 +34,13 @@ export async function POST(req: Request) {
     progress = await db.progress.update(existing.id, {
       status,
       quizScore: body.quizScore ?? existing.quizScore,
-      completedAt: completed ? new Date().toISOString() : existing.completedAt,
+      quizPassed: body.quizPassed ?? existing.quizPassed,
+      simScore: body.simScore ?? existing.simScore,
+      simPassed: body.simPassed ?? existing.simPassed,
+      certified: body.certified ?? existing.certified,
+      completedAt: completed
+        ? (existing.completedAt ?? new Date().toISOString())
+        : existing.completedAt,
     });
   } else {
     progress = await db.progress.create({
@@ -41,6 +50,10 @@ export async function POST(req: Request) {
       moduleId: body.moduleId,
       status,
       quizScore: body.quizScore,
+      quizPassed: body.quizPassed,
+      simScore: body.simScore,
+      simPassed: body.simPassed,
+      certified: body.certified,
       completedAt: completed ? new Date().toISOString() : undefined,
     });
   }

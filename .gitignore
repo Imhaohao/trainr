@@ -20,6 +20,9 @@
 # production
 /build
 
+# local DB (T1 LocalRepository)
+.data/
+
 # misc
 .DS_Store
 *.pem

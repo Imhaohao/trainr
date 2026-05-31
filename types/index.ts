@@ -48,6 +48,9 @@ export interface Business {
   address: string;
   state: string;
   employeeCount: number;
+  /** Public website — scraped during research when set. */
+  website?: string;
+  phone?: string;
   demographics?: string;
   languages: LanguageCode[];
   mission?: string;
@@ -68,6 +71,16 @@ export interface Recipe {
   steps: string[];
 }
 
+export type ContextSourceType = 'pdf' | 'google_doc' | 'upload';
+
+export interface ContextSource {
+  type: ContextSourceType;
+  label: string;
+  fileId?: string;
+  url?: string;
+  extractedAt: string; // ISO-8601
+}
+
 export interface IntakeProfile {
   businessId: string;
   openingClosing?: string;
@@ -76,6 +89,10 @@ export interface IntakeProfile {
   drinkProduction?: string;
   recipes?: Recipe[];
   notes?: string;
+  /** Parsed text from PDFs and Google Docs — fed to curriculum generation. */
+  directContext?: string;
+  contextSources?: ContextSource[];
+  googleDocUrls?: string[];
   uploadedFileIds: string[];
   menuImageIds: string[];
 }
@@ -160,6 +177,7 @@ export interface TrainingModule {
   contentMarkdown: string;
   languageVariants?: Record<string, string>; // BCP-47 -> markdown
   quiz?: Quiz;
+  simId?: string;
   sourceArtifactIds?: string[];
 }
 
@@ -194,6 +212,9 @@ export interface EmployeeProgress {
   moduleId: string;
   status: ProgressStatus;
   quizScore?: number;
+  quizPassed?: boolean;
+  simScore?: number;
+  simPassed?: boolean;
   completedAt?: string; // ISO-8601
   certified?: boolean;
 }

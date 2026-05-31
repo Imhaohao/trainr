@@ -1,16 +1,18 @@
 // POST /api/auth/employee/join { joinCode, name } -> { user, businessId }
-// Phase 0 stub (owner: T1). Resolves the business by join code against the
-// mock DB and creates a no-password employee user. Phase 1 (T1): set an
-// employee session cookie.
 
 import { nanoid } from 'nanoid';
 import { getDb } from '@/lib/contracts/db';
+import {
+  applySessionCookie,
+  sessionFromUser,
+} from '@/lib/auth/session';
 import { ok, fail, readJson } from '@/lib/http';
 import type { User } from '@/types';
 
 export async function POST(req: Request) {
   const body = await readJson<{ joinCode?: string; name?: string }>(req);
   if (!body.joinCode) return fail('joinCode is required');
+  if (!body.name?.trim()) return fail('name is required');
 
   const db = getDb();
   const business = await db.findBusinessByJoinCode(body.joinCode);
@@ -20,10 +22,11 @@ export async function POST(req: Request) {
     id: `usr_${nanoid(10)}`,
     role: 'employee',
     businessId: business.id,
-    name: body.name ?? 'New Teammate',
+    name: body.name.trim(),
     createdAt: new Date().toISOString(),
   };
   await db.users.create(user);
 
-  return ok({ user, businessId: business.id });
+  const res = ok({ user, businessId: business.id });
+  return applySessionCookie(res, sessionFromUser(user));
 }

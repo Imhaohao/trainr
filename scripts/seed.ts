@@ -7,7 +7,8 @@
  */
 import { getDb } from '../lib/contracts/db';
 import type { CrudRepo } from '../lib/contracts/db';
-import { demoFixture } from '../lib/mocks/fixtures';
+import { createOwnerCredential } from '../lib/auth/credentials';
+import { demoFixture, demoOwner } from '../lib/mocks/fixtures';
 
 async function upsert<T extends { id: string }>(
   repo: CrudRepo<T>,
@@ -42,6 +43,13 @@ async function main() {
 
   const businesses = await db.businesses.list();
   const programs = await db.programs.list();
+  if (process.env.USE_MOCKS !== 'true' && demoOwner.email) {
+    await createOwnerCredential(demoOwner.id, demoOwner.email, 'demo123');
+    console.log(
+      `Demo owner login: ${demoOwner.email} / demo123 (join code ${f.business.joinCode})`,
+    );
+  }
+
   console.log(
     `Seeded: ${businesses.length} business(es), ${f.users.length} users, ` +
       `${programs[0]?.modules.length ?? 0} modules, join code ${f.business.joinCode}.`,

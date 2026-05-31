@@ -1,15 +1,14 @@
-// POST /api/quiz/:moduleId/grade { answers } -> { score, perQuestion, feedback }
-// Phase 0 STUB — owner: T3. Grades multiple-choice deterministically against
-// the program fixture; free-response is marked for review. T3 replaces with
-// rubric grading via the LLM + Claude Skills.
+// POST /api/quiz/:moduleId/grade { employeeId, businessId, answers, language } -> grade result
 
-import { getDb } from '@/lib/contracts/db';
-import { ok, fail, readJson } from '@/lib/http';
-import { IDS } from '@/lib/mocks/fixtures';
+import { gradeQuiz } from '@/lib/coach/grading';
+import { fail, ok, readJson } from '@/lib/http';
+import type { Language } from '@/types/training';
 
 interface GradeBody {
   businessId?: string;
-  answers: Record<string, number | string>;
+  employeeId?: string;
+  answers?: Record<string, number | string>;
+  language?: Language;
 }
 
 export async function POST(
@@ -18,36 +17,19 @@ export async function POST(
 ) {
   const { moduleId } = await params;
   const body = await readJson<GradeBody>(req);
-  const answers = body.answers ?? {};
 
-  const db = getDb();
-  const programs = await db.programs.list({
-    businessId: body.businessId ?? IDS.business,
-  });
-  const program = programs[0];
-  const mod = program?.modules.find((m) => m.id === moduleId);
-  if (!mod?.quiz) return fail('Quiz not found', 404);
+  if (!body.employeeId) return fail('employeeId is required');
+  if (!body.businessId) return fail('businessId is required');
 
-  const perQuestion = mod.quiz.questions.map((q) => {
-    if (q.type === 'multiple_choice') {
-      const correct = Number(answers[q.id]) === q.correctIndex;
-      return { id: q.id, correct, needsReview: false };
-    }
-    return { id: q.id, correct: null, needsReview: true };
+  const result = await gradeQuiz({
+    moduleId,
+    employeeId: body.employeeId,
+    businessId: body.businessId,
+    answers: body.answers ?? {},
+    language: body.language,
   });
 
-  const gradable = perQuestion.filter((p) => p.correct !== null);
-  const score =
-    gradable.length === 0
-      ? 0
-      : Math.round(
-          (gradable.filter((p) => p.correct).length / gradable.length) * 100,
-        );
+  if (!result) return fail('Quiz or employee not found', 404);
 
-  return ok({
-    score,
-    perQuestion,
-    feedback:
-      'Auto-graded multiple choice. Free-response answers are pending review.',
-  });
+  return ok(result);
 }

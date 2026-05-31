@@ -395,11 +395,58 @@ We're a family-run bubble tea shop on Mission Street. Our mission is simple:
     sourceArtifactIds: ['res_competitor_onboarding'],
   }),
   m({
+    id: 'mod_guest_care',
+    order: 2.5,
+    type: 'role_specific',
+    roleId: IDS.roleCashier,
+    title: 'Guest Care',
+    contentMarkdown: `# Guest Care — Complaints & Recovery
+
+When a drink is wrong or a guest is upset, stay calm and fix it fast.
+
+## Steps
+1. **Apologize** — a simple sorry goes a long way.
+2. **Listen** — let them finish without arguing.
+3. **Fix it** — offer a **remake** at the sugar level they want (0/25/50/75/100%).
+4. **Confirm** — read back sugar and ice on the remake before you seal.
+
+## Never
+- Argue about whether it "should" taste sweet.
+- Invent refunds or free items unless a manager approves.`,
+    languageVariants: {
+      'zh-Hans': `# 顾客关怀 — 投诉与补救\n\n饮品出错或客人不高兴时，保持冷静并快速解决。\n\n## 步骤\n1. **道歉**\n2. **倾听** — 不要争辩\n3. **重做** — 按客人要求的糖度（0/25/50/75/100%）\n4. **确认** — 重做前再次确认糖度和冰块`,
+    },
+    quiz: quiz('mod_guest_care', [
+      {
+        id: 'q1',
+        prompt: 'What should you do first when a guest says their drink is too sweet?',
+        type: 'multiple_choice',
+        options: [
+          'Explain that 100% sugar is the default',
+          'Apologize and listen',
+          'Offer a full refund',
+          'Ignore the line and keep working',
+        ],
+        correctIndex: 1,
+      },
+      {
+        id: 'q2',
+        prompt:
+          'A guest is upset about sweetness. Describe what you would say and do to fix it.',
+        type: 'free_response',
+        rubric:
+          'Full credit: apologizes, listens, offers a remake at a lower sugar level, and confirms sugar and ice on the remake.',
+      },
+    ]),
+    sourceArtifactIds: ['res_competitor_onboarding'],
+  }),
+  m({
     id: 'mod_drink_build',
     order: 3,
     type: 'role_specific',
     roleId: IDS.roleBarista,
     title: 'Barista: Drink Build Standards',
+    simId: 'sim_boba_station',
     contentMarkdown: `# Barista: Drink Build Standards
 
 ## Standard build order
@@ -597,7 +644,7 @@ export const demoSchedule: OnboardingWeek[] = [
   {
     week: 1,
     goals: ['Learn the brand and values', 'Master POS + cash handling', 'Get your Food Handler Card started'],
-    moduleIds: ['mod_company_intro', 'mod_pos_cash', 'mod_food_safety'],
+    moduleIds: ['mod_company_intro', 'mod_pos_cash', 'mod_guest_care', 'mod_food_safety'],
   },
   {
     week: 2,
@@ -767,7 +814,7 @@ export const demoChat: ChatMessage[] = [
     role: 'assistant',
     content:
       'Apologize, then offer to remake it at a lower sugar level. Remember our levels are 0/25/50/75/100% — ask what they\'d prefer and rebuild. Always confirm sugar and ice on the remake so it\'s right this time.',
-    citations: [{ moduleId: 'mod_pos_cash', title: 'Cashier: POS & Cash Handling', snippet: 'Always confirm sugar level and ice level' }],
+    citations: [{ moduleId: 'mod_guest_care', title: 'Guest Care', snippet: 'Apologize — listen — offer a remake at the sugar level they want' }],
     createdAt: NOW,
   },
 ];

@@ -16,7 +16,7 @@
 
 import { nanoid } from 'nanoid';
 import type { ResearchProvider, ResearchQuery } from '../contracts/research';
-import type { ResearchArtifact, ResearchCategory } from '../../types/index';
+import type { Business, ResearchArtifact, ResearchCategory } from '../../types/index';
 import { getDb } from '../contracts/db';
 import { getLlm } from '../contracts/llm';
 import { getStorage, tigrisKeys } from './tigris';
@@ -71,7 +71,29 @@ function searchUrl(query: string): string {
   return `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
 }
 
+/** Prefix queries with `url:` to scrape a URL directly (business site, etc.). */
+export function directScrapeQuery(url: string): string {
+  return `url:${url}`;
+}
+
 function resolveTarget(query: string, state: string): ResearchTarget {
+  if (query.startsWith('url:')) {
+    const url = query.slice(4).trim();
+    const host = (() => {
+      try {
+        return new URL(url).hostname.replace(/^www\./, '');
+      } catch {
+        return url;
+      }
+    })();
+    return {
+      query,
+      url,
+      category: 'industry_standard',
+      title: `Business source: ${host}`,
+    };
+  }
+
   const q = query.toLowerCase();
   const st = (state || '').toUpperCase();
   const mk = (url: string, category: ResearchCategory, title: string) => ({
@@ -143,6 +165,60 @@ export function buildResearchQueries(industry: string, state: string): string[] 
     'standardized drink-prep and recipe ratio sources',
     `OSHA, ADA, and workplace harassment prevention requirements for ${st}`,
   ];
+}
+
+/**
+ * Business-specific research: scrape the owner's site, local listing signals,
+ * and nearby competitors — then layer compliance/industry defaults on top.
+ */
+export function buildBusinessResearchQueries(business: Business): string[] {
+  const queries: string[] = [];
+  const { name, industry, state, address, website, mission } = business;
+  const locationHint = [name, address, state].filter(Boolean).join(' ');
+
+  if (website?.trim()) {
+    const url = website.trim().match(/^https?:\/\//i)
+      ? website.trim()
+      : `https://${website.trim()}`;
+    queries.push(directScrapeQuery(url));
+  }
+
+  if (name && address) {
+    queries.push(
+      `${name} ${address} menu services hours`,
+      `${name} ${state} reviews what to order`,
+      `similar ${industry.replace(/_/g, ' ')} businesses near ${address} competitor training`,
+      `${industry.replace(/_/g, ' ')} employee onboarding best practices ${state}`,
+    );
+  } else if (name) {
+    queries.push(
+      `${name} ${industry.replace(/_/g, ' ')} business overview`,
+      `competitors to ${name} ${state} ${industry.replace(/_/g, ' ')}`,
+    );
+  }
+
+  if (mission?.trim()) {
+    queries.push(`${name} ${mission.slice(0, 80)} company culture values`);
+  }
+
+  if (locationHint) {
+    queries.push(`${locationHint} yelp google maps listing`);
+  }
+
+  // Compliance + industry benchmarks (deduped below).
+  return [...queries, ...buildResearchQueries(industry, state)];
+}
+
+function dedupeQueries(queries: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const q of queries) {
+    const key = q.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(q);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,10 +340,11 @@ async function condense(text: string, target: ResearchTarget): Promise<string> {
 // Provider + factory.
 // ---------------------------------------------------------------------------
 async function research(input: ResearchQuery): Promise<ResearchArtifact[]> {
-  const queries =
+  const queries = dedupeQueries(
     input.queries.length > 0
       ? input.queries
-      : buildResearchQueries(input.industry, input.state);
+      : buildResearchQueries(input.industry, input.state),
+  );
   const targets = queries.map((q) => resolveTarget(q, input.state));
 
   // RTRVR runs parallel browser sessions; fire targets concurrently and keep

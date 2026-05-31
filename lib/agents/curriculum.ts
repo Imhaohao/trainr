@@ -124,6 +124,18 @@ function planModules(input: CurriculumInput): ModulePlan[] {
       match: /machine|equipment|sealer|blender|brewer|calibrat/i,
     });
   }
+  if (intake?.directContext) {
+    plan.push({
+      type: 'operations',
+      title: 'Operations: From Your Documents',
+      keyPoints: [
+        'standards and procedures from owner-uploaded materials',
+        'how daily work matches handbooks and SOPs you provided',
+        'where to double-check when something is not covered in training',
+      ],
+      match: /document|handbook|upload|sop|pdf|google/i,
+    });
+  }
   if (intake?.drinkProduction || (intake?.recipes && intake.recipes.length > 0)) {
     const recipeNames = (intake?.recipes ?? []).map((r) => r.name);
     plan.push({
@@ -183,6 +195,11 @@ function curriculumSystem(input: CurriculumInput): string {
     );
   }
   if (intake?.notes) intakeLines.push(`Owner notes: ${intake.notes}`);
+  if (intake?.directContext) {
+    intakeLines.push(
+      `Uploaded documents & links (parsed):\n${intake.directContext.slice(0, 12_000)}`,
+    );
+  }
 
   return [
     'You are an employee-training author for small, often immigrant-owned businesses.',

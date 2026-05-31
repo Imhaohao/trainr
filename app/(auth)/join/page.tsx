@@ -13,6 +13,7 @@ import {
   Input,
   Label,
 } from '@/components/ui';
+import { saveEmployeeSession } from '@/lib/employee/session';
 
 export default function EmployeeJoinPage() {
   const router = useRouter();
@@ -38,7 +39,11 @@ export default function EmployeeJoinPage() {
       setError(json.error ?? 'Could not join — check your code');
       return;
     }
-    // Employee area is owned by T3; route there once it exists.
+    saveEmployeeSession({
+      user: json.data.user,
+      businessId: json.data.businessId,
+      language: 'en',
+    });
     router.push('/learn');
   }
 

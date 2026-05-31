@@ -63,6 +63,11 @@ export default function LoginPage() {
           </Button>
         </form>
         <p className="mt-4 text-center text-sm text-muted">
+          Demo (after <code className="text-xs">npm run seed</code>):{' '}
+          <span className="font-mono">xiao@happylemon-demo.com</span> /{' '}
+          <span className="font-mono">demo123</span>
+        </p>
+        <p className="mt-2 text-center text-sm text-muted">
           New here?{' '}
           <Link href="/signup" className="font-medium text-accent underline">
             Create a business account

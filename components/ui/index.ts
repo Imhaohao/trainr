@@ -1,6 +1,6 @@
 // Shared UI primitives (Phase 0 seed). Extend ADDITIVELY — one component per file.
 export { cn } from './cn';
-export { Button, type ButtonProps } from './Button';
+export { Button, buttonVariants } from './Button';
 export {
   Card,
   CardHeader,
@@ -22,3 +22,10 @@ export {
   type TabsProps,
 } from './Tabs';
 export { Spinner, type SpinnerProps } from './Spinner';
+export { default as AiAssistat, AiAssistat as AiAssistant } from './ai-assistat';
+export type { AiAssistatMessage, AiAssistatProps } from './ai-assistat';
+export {
+  default as TrainrNavbar,
+  TrainrNavbar as NavigationMenuBar,
+} from './navigation-menu-4';
+export type { NavLinkItem, TrainrNavbarProps } from './navigation-menu-4';

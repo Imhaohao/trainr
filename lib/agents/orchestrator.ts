@@ -14,7 +14,7 @@ import { getDb } from '../contracts/db';
 import { getResearch } from '../contracts/research';
 import { getStorage } from '../contracts/storage';
 import { tigrisKeys } from '../integrations/tigris';
-import { buildResearchQueries } from '../integrations/rtrvr';
+import { buildBusinessResearchQueries } from '../integrations/rtrvr';
 import { generateCurriculum, type CurriculumResult } from './curriculum';
 import { generateCompliance } from './compliance';
 import { trainingProgramSchema } from './schemas';
@@ -186,7 +186,7 @@ export async function runPipeline(
         businessId,
         industry: business.industry,
         state: business.state,
-        queries: buildResearchQueries(business.industry, business.state),
+        queries: buildBusinessResearchQueries(business),
       });
       await saveCheckpoint('research', { research });
     }

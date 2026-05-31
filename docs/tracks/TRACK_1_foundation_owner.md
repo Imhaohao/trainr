@@ -84,11 +84,11 @@ Multi-step, **dump-friendly** (owners aren't tech-savvy — big inputs, optional
 - Don't read whole files you didn't write — ask a subagent for the specific signature.
 
 ## Definition of Done (do NOT stop until ALL pass)
-- [ ] Phase 0 merged to `main`: types, contracts, mocks+fixtures, ui primitives, owner nav (with compliance+deploy links), all §5 routes stubbed and returning mock data, seed script, env example.
-- [ ] `npx tsc --noEmit` clean and `npm run build` passes on `main` after Phase 0.
-- [ ] `getDb()` returns a working `LocalRepository` with zero external keys; `InsforgeRepository` implemented and selected when key present (or `// BLOCKED:` + INTEGRATION_LOG note if Insforge creds never arrive).
-- [ ] Owner can: sign up → create business (gets join code) → complete the 6-step wizard with autosave → upload a file that lands in Tigris (or mock) and shows as a `StoredFile` → click Generate (calls T2 endpoint) → see status poll → review & inline-edit a module.
-- [ ] Employee join: entering the demo join code creates an employee session and redirects to the employee area.
-- [ ] Every route you own returns `{ok:true,data}` shapes per §5; auth-guards enforce owner-only.
-- [ ] No edits to files outside your ownership column (§6 matrix). Contract changes (if any) went through INTEGRATION_LOG.
-- [ ] Demo steps 1–2 and 4 (owner side) work end-to-end against the fixture.
+- [x] Phase 0 merged to `main`: types, contracts, mocks+fixtures, ui primitives, owner nav (with compliance+deploy links), all §5 routes stubbed and returning mock data, seed script, env example.
+- [x] `npx tsc --noEmit` clean and `npm run build` passes on `main` after Phase 0.
+- [x] `getDb()` returns a working `LocalRepository` with zero external keys; `InsforgeRepository` implemented and selected when key present (or `// BLOCKED:` + INTEGRATION_LOG note if Insforge creds never arrive).
+- [x] Owner can: sign up → create business (gets join code) → complete the 6-step wizard with autosave → upload a file that lands in Tigris (or mock) and shows as a `StoredFile` → click Generate (calls T2 endpoint) → see status poll → review & inline-edit a module.
+- [x] Employee join: entering the demo join code creates an employee session and redirects to the employee area.
+- [x] Every route you own returns `{ok:true,data}` shapes per §5; auth-guards enforce owner-only.
+- [x] No edits to files outside your ownership column (§6 matrix). Contract changes (if any) went through INTEGRATION_LOG.
+- [x] Demo steps 1–2 and 4 (owner side) work end-to-end against the fixture.

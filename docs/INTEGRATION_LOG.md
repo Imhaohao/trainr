@@ -10,9 +10,25 @@ detail: ...
 ```
 
 ## Open items
-- [ ] **Request Insforge credentials from user** — `INSFORGE_API_URL`, `INSFORGE_API_KEY`, `INSFORGE_PROJECT_ID`. Until then T1 ships on `LocalRepository`. (owner: T1)
+- [ ] **Request Insforge credentials from user** — `INSFORGE_API_URL`, `INSFORGE_API_KEY`, `INSFORGE_PROJECT_ID`. `getInsforgeDb()` is a stub that delegates to `LocalRepository` until wired. (owner: T1)
 
 ## Log
+### [2026-05-31] [T3] BLOCKED(mcp): Equipment sim adapter — fixture-backed boba station
+status: blocked
+detail: |
+  Interactive **Practice Station** (`sim_boba_station`) ships on `mod_drink_build` via `getEquipmentSim()` / `getSimForModule()` in `lib/employee/equipment.ts`. Content is a **clearly labeled fixture** (`lib/employee/equipment-fixture.ts`, `source.kind: "fixture"`).
+  **MCP swap:** when an equipment/operating-procedure MCP exists, replace fixture lookup with an MCP tool call returning the same `EquipmentSim` shape scoped by `business_id`, with `source.kind: "mcp"` and `source.ref` / `retrievedAt` from the server.
+  Grading: `POST /api/sim/:businessId/grade` → `gradeSimRun()` + scenario-coach debrief (`lib/coach/llm.ts` / mock fallback). Module certification requires **both** quiz pass (if quiz) and sim pass (if `simId`) via `evaluateModuleCompletion()`.
+
+### [Phase 1] [T1] Owner data layer, auth, onboarding, dashboard — Track 1 DoD
+status: ready
+detail: |
+  **Local DB:** `lib/db/local-repository.ts` persists to `.data/trainr-db.json`. `getDb()` selects mock when `USE_MOCKS=true`, Insforge stub when `INSFORGE_API_KEY` set, else Local.
+  **Auth:** httpOnly `trainr_session` cookie; owner signup/login with scrypt passwords (Local); `GET /api/auth/me`; employee join sets session + client storage for T3.
+  **Owner routes (real):** `/api/auth/*`, `/api/business/*` (GET intake added), owner-guarded with `requireOwner()`.
+  **UI:** 6-step onboarding wizard (autosave intake, uploads, generate → pipeline); dashboard session-scoped with join-code copy, pipeline poll, inline module PATCH editor, live employee roster from DB.
+  **Demo:** `USE_MOCKS=false`, `npm run seed` → owner `xiao@happylemon-demo.com` / `demo123`, join code `HLEMON`. `tsc` + `npm run build` clean.
+
 ### [Phase 1] [T2] Orchestrator + curriculum ready — pipeline runs end-to-end
 status: ready
 detail: `lib/agents/orchestrator.ts` — `runPipeline(businessId, {runId?})` runs research → curriculum → compliance → assemble → persist. Each stage **checkpoints to Tigris** (`${businessId}/program/v${n}/_checkpoint.json` with stage + partial results); on `run` it resumes from the last checkpoint instead of restarting (reuses already-computed research/curriculum/compliance). Writes a **run-status record** (`${businessId}/program/run-status.json`, exported `getRunStatus(businessId)`) and updates `Business.status` (researching → generating → ready). Final `TrainingProgram` persisted to DB (`getDb().programs.create`, upsert) **and** Tigris (`program.json` + per-module `.md`). New runs bump the version; mid-flight runs resume the in-progress version.
@@ -47,15 +63,31 @@ status: ready
 detail: `lib/integrations/tigris.ts` implements `StorageAdapter` (AWS SDK v3 → Tigris S3, `forcePathStyle: true`, region `auto`, bucket `TIGRIS_BUCKET`). Exports `getTigrisStorage()` (real singleton), `getStorage()` (mock-vs-real selection), and `tigrisKeys` helpers enforcing the `${businessId}/...` key layout. Falls back to `mock-storage` when AWS creds are absent or `USE_MOCKS==='true'`.
 contract-touch: `lib/contracts/storage.ts#getStorage` (frozen) now re-exports the selector from the integration — this is the T1-authored TODO hook, signature unchanged. No interface/type changes. `tsc --noEmit` clean.
 
-### [Phase 0] [T1] Phase 0 ready — foundation merged to main
-status: done
-detail: Foundation complete and merged. Other tracks may now branch `track/<n>-<slug>` off `main`.
-contract surface (FROZEN — change via proposal in this log):
-- `types/index.ts` — all PLAN §4 entities (User, Business, BusinessRole, IntakeProfile, Recipe, StoredFile, ResearchArtifact, TrainingProgram, TrainingModule, Quiz, QuizQuestion, OnboardingWeek, EmployeeProgress, ComplianceSnapshot, AppliedLaw, AuditEvent, ChatMessage) + `ApiResponse<T>` envelope.
-- `lib/contracts/` — `db.ts` (`DbRepository`/`CrudRepo<T>` + `getDb()`), `storage.ts` (`StorageAdapter` + `getStorage()`), `research.ts` (`ResearchProvider` + `ResearchQuery`), `llm.ts` (`LlmProvider`/`GenerateOpts` + `getLlm()`).
-- `lib/mocks/` — rich Happy Lemon fixture (business, owner + 2 employees, intake w/ 3 recipes, 8-module program w/ quizzes, 4-week schedule, compliance snapshot, research artifacts, files, audit, chat) + in-memory `mock-db`, `mock-storage`, `mock-research`, `mock-llm`.
-- Factories: `getDb()` / `getLlm()` / `getStorage()` return mock when `USE_MOCKS==='true'` or the relevant key is missing.
-- App shell + theme, `components/ui/*` primitives (Button/Card/Input/Textarea/Select/Badge/Progress/Tabs/Spinner), owner nav (with /compliance + /deploy links pre-seeded for T4).
-- Every PLAN §5 route stubbed and returning `{ok,data}` mock data via the adapters; ownership comments mark which track takes over each stub.
-- `env.local.example`, `scripts/seed.ts`.
-verified: `npx tsc --noEmit` clean; no lint errors in source.
+### [2026-05-31] [T1] Phase 0 ready — parallel tracks may branch
+status: ready
+detail: |
+  **Phase 0 is merged on `main`. T2, T3, T4: rebase on `main`, copy `env.local.example` → `.env.local`, set `USE_MOCKS=true`, run `npm run seed` if the mock DB looks empty.**
+
+  ### Frozen contract surface (do not reshape without proposal + 👍)
+  - **`types/index.ts`** — User, Business, BusinessRole, IntakeProfile, Recipe, StoredFile, ResearchArtifact, TrainingProgram, TrainingModule (+ optional `simId`), Quiz, QuizQuestion, OnboardingWeek, EmployeeProgress (+ `quizPassed`, `simScore`, `simPassed`), ComplianceSnapshot, AppliedLaw, AuditEvent, ChatMessage, ApiResponse
+  - **`types/training.ts`** — Equipment sim domain types (T3 additive; not frozen in Phase 0)
+  - **`lib/contracts/db.ts`** — CrudRepo, DbRepository, getDb()
+  - **`lib/contracts/storage.ts`** — StorageAdapter, getStorage()
+  - **`lib/contracts/research.ts`** — ResearchQuery, ResearchProvider, getResearch()
+  - **`lib/contracts/llm.ts`** — LlmMessage, GenerateOpts, LlmProvider, getLlm()
+  - **`lib/mocks/fixtures.ts`** — demoFixture, IDS, DEMO_JOIN_CODE (`HLEMON`), Happy Lemon demo data
+
+  ### Stub ownership (replace bodies in files you own; keep route paths + envelope shape)
+  | Route prefix | Owner | Phase 0 behavior |
+  |--------------|-------|------------------|
+  | `/api/auth/*`, `/api/business/*` | T1 | CRUD against in-memory mock DB (Phase 1 adds session + Local/Insforge) |
+  | `/api/pipeline/*`, `/api/programs/*` | T2 | Stub: flips business status / reads fixture program; PATCH module persists to mock |
+  | `/api/coach/*`, `/api/quiz/*`, `/api/progress/*` | T3 | Stub: mock LLM stream, MC quiz grading, progress list |
+  | `/api/deploy/*`, `/api/audit/*`, `/api/compliance-report/*`, `/api/i18n/*` | T4 | Stub: publish bump + audit row, compliance snapshot read, translate noop |
+
+  ### Demo fixture quick reference
+  - Business id: `biz_happylemon` · join code: `HLEMON`
+  - Owner: `usr_owner_xiao` · employees: `usr_emp_maria`, `usr_emp_kevin`
+  - Program: `prog_happylemon_v1` (8 modules, quizzes, 4-week schedule)
+
+  Owner UI placeholders at `/compliance` and `/deploy` are T1 nav shells only — T4 replaces page content.

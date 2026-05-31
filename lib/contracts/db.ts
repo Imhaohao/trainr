@@ -13,6 +13,8 @@ import type {
   AuditEvent,
   ChatMessage,
 } from '../../types/index';
+import { getInsforgeDb } from '../db/insforge-repository';
+import { getLocalDb } from '../db/local-repository';
 import { getMockDb } from '../mocks/mock-db';
 
 export interface CrudRepo<T> {
@@ -43,9 +45,7 @@ export interface DbRepository {
 // Phase 0 ships the mock repository. Phase 1 (T1) adds InsforgeRepository (real)
 // and a persistent LocalRepository under lib/db/ and selects here.
 export function getDb(): DbRepository {
-  const useMocks =
-    process.env.USE_MOCKS === 'true' || !process.env.INSFORGE_API_KEY;
-  if (useMocks) return getMockDb();
-  // T1 Phase 1: return new InsforgeRepository() here once Insforge creds land.
-  return getMockDb();
+  if (process.env.USE_MOCKS === 'true') return getMockDb();
+  if (process.env.INSFORGE_API_KEY?.trim()) return getInsforgeDb();
+  return getLocalDb();
 }
